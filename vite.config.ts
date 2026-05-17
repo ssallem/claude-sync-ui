@@ -30,4 +30,9 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+
+  // Note: `index-mock.html` is intentionally NOT added to `build.rollupOptions.input`
+  // because Tauri ships the contents of `dist/` and we don't want mock code in the
+  // production installer. The dev server still serves `/index-mock.html` automatically
+  // (any root-level HTML file works), which is all the Playwright capture script needs.
 }));

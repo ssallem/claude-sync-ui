@@ -8,7 +8,11 @@ Desktop GUI for [claude-sync](https://github.com/ssallem/claude-sync) — see yo
 
 ## Screenshots
 
-Screenshots coming soon — grab the [latest installer](https://github.com/ssallem/claude-sync-ui/releases/latest) and try it yourself.
+| First run | Synced state | Conflict toast |
+|---|---|---|
+| ![Init screen](docs/screenshots/01-init.png) | ![Main view](docs/screenshots/02-main.png) | ![Conflict](docs/screenshots/03-conflict.png) |
+
+*Captured from the React frontend in mock mode (`npm run screenshots`) — the actual Tauri window has the standard Windows title bar around this UI.*
 
 ## Why
 

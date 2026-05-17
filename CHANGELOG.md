@@ -11,6 +11,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fresh status-load failure after a sync surfaces in the `ErrorBanner` even if
   the previous error was dismissed.
 
+### Documentation
+- **Screenshots** — added auto-captured screenshots (mock-mode React UI) for the
+  three primary states (first run, synced, conflict toast). Replaces the
+  `Screenshots coming soon` placeholder. Captured by `npm run screenshots` via
+  Playwright + system Edge against `index-mock.html` (a stubbed-`invoke()` Vite
+  entry that never starts a real Tauri runtime).
+
 ### Changed
 - Window title — `index.html` now ships `<title>claude-sync</title>` instead of
   the Vite/Tauri scaffolding default (`"Tauri + React + Typescript"`) that was

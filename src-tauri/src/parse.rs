@@ -127,8 +127,14 @@ pub fn parse_push(stdout: &str) -> PushResult {
             let trimmed = line.trim_start();
             if let Some(rest) = trimmed.strip_prefix("commit ") {
                 let mut it = rest.splitn(2, ' ');
-                commit_sha = it.next().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-                message = it.next().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+                commit_sha = it
+                    .next()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
+                message = it
+                    .next()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
             }
         }
     }
@@ -234,16 +240,10 @@ pub fn parse_doctor(stdout: &str) -> DoctorResult {
     let parse_until = if lines.is_empty() { 0 } else { lines.len() - 1 };
     for line in lines.iter().take(parse_until) {
         if let Some(level) = extract_bracket(line) {
-            let body = line
-                .split_once(']')
-                .map(|x| x.1)
-                .unwrap_or("")
-                .trim_start();
+            let body = line.split_once(']').map(|x| x.1).unwrap_or("").trim_start();
             // claude-sync prints "[LEVEL] name — detail" with U+2014 em-dash;
             // accept the ASCII " - " variant too so the parser stays robust to format drift.
-            let split = body
-                .split_once(" — ")
-                .or_else(|| body.split_once(" - "));
+            let split = body.split_once(" — ").or_else(|| body.split_once(" - "));
             let (name, detail) = match split {
                 Some((n, d)) => (n.trim().to_string(), d.trim().to_string()),
                 None => (body.trim().to_string(), String::new()),

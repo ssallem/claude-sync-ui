@@ -77,4 +77,7 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
       - name: Tauri build (msi + nsis)
-        run: npm run tauri build
+        # `tauri build` forwards trailing args (after `--`) to cargo. `--locked`
+        # makes the release build fail if Cargo.lock would be regenerated, so
+        # shipped artifacts always match the committed lockfile.
+        run: npm run tauri build -- --ci -- --locked

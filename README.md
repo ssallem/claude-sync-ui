@@ -8,9 +8,7 @@ Desktop GUI for [claude-sync](https://github.com/ssallem/claude-sync) — see yo
 
 ## Screenshots
 
-| First run | Synced state | Conflict |
-|---|---|---|
-| ![Init screen](docs/screenshots/01-init.png) | ![Main view](docs/screenshots/02-main.png) | ![Conflict toast](docs/screenshots/03-conflict.png) |
+Screenshots coming soon — grab the [latest installer](https://github.com/ssallem/claude-sync-ui/releases/latest) and try it yourself.
 
 ## Why
 
@@ -35,6 +33,20 @@ npm run tauri build
 ```
 
 Outputs land in `src-tauri/target/release/bundle/`. Requires Node 20+, Rust stable, and the Tauri 2 [Windows prerequisites](https://tauri.app/start/prerequisites/).
+
+### Sidecar binary
+
+The Windows `claude-sync` CLI is bundled at
+`src-tauri/binaries/claude-sync-x86_64-pc-windows-msvc.exe`. If you want to
+replace it with a freshly built copy, build it from
+[ssallem/claude-sync](https://github.com/ssallem/claude-sync) via
+`cargo build --release` and copy the binary into that path.
+
+SHA-256 of the bundled `v0.1.1` sidecar:
+
+```
+9a1e7365198c555decb5c65ddd95c3b439e78643636dd20be997333f0f03df30  claude-sync-x86_64-pc-windows-msvc.exe
+```
 
 ## What it shows
 

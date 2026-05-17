@@ -7,6 +7,7 @@ interface RemoteBarProps {
 }
 
 export default function RemoteBar({ remote, lastSyncAgo, onChange }: RemoteBarProps) {
+  const syncLabel = lastSyncAgo === "never" ? "(no sync yet)" : `Last sync: ${lastSyncAgo}`;
   return (
     <div className="bg-slate-800/80 text-slate-200 px-3 py-2 flex items-center justify-between text-xs border-b border-slate-700">
       <div className="flex flex-col sm:flex-row sm:items-center sm:gap-4 min-w-0">
@@ -19,7 +20,7 @@ export default function RemoteBar({ remote, lastSyncAgo, onChange }: RemoteBarPr
         <div className="flex items-center gap-1 text-slate-400">
           <span>Local:</span>
           <span className="font-mono">~/.claude</span>
-          <span>(initialized {lastSyncAgo})</span>
+          <span>{syncLabel}</span>
         </div>
       </div>
       <button

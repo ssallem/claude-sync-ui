@@ -28,8 +28,10 @@ function App() {
   const [initLoading, setInitLoading] = useState<boolean>(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [remoteRefreshKey, setRemoteRefreshKey] = useState<number>(0);
+  const [errorDismissed, setErrorDismissed] = useState<boolean>(false);
   const remoteUrl = useRemoteUrl(status !== null, remoteRefreshKey);
   const lastSyncLabel = formatAgo(lastSyncAt);
+  const visibleError = error && !errorDismissed ? error : null;
 
   const runAction = useCallback(async (key: ActionKey, fn: () => Promise<void>) => {
     if (loading !== null) return;
@@ -43,7 +45,7 @@ function App() {
     async () => { await api.push(); setLastSyncAt(Date.now()); await refresh(); }), [runAction, refresh]);
   const handlePull = useCallback(() => runAction("pull",
     async () => { await api.pull(); setLastSyncAt(Date.now()); await refresh(); }), [runAction, refresh]);
-  const handleRefresh = useCallback(() => runAction("refresh", () => refresh()), [runAction, refresh]);
+  const handleRefresh = useCallback(() => runAction("refresh", async () => { setErrorDismissed(false); await refresh(); }), [runAction, refresh]);
   const handleResolve = useCallback(() => toast.error(
     "Conflict resolver coming in v0.2 — for now, edit ~/.claude/<file> manually and remove the '_conflicts' key, then push.",
   ), [toast]);
@@ -75,7 +77,7 @@ function App() {
   return (
     <div className="h-screen flex flex-col bg-slate-900 text-slate-100">
       <Header onSettings={handleSettings} onRefresh={handleRefresh} />
-      {error && <ErrorBanner message={error} />}
+      {visibleError && <ErrorBanner message={visibleError} onDismiss={() => setErrorDismissed(true)} />}
       <RemoteBar remote={remoteUrl} lastSyncAgo={lastSyncLabel} onChange={handleSettings} />
       <main className="flex-1 overflow-auto bg-slate-900">
         <FileTree

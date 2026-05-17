@@ -39,7 +39,7 @@ const okStatus: StatusResult = {
 const okDoctor = {
   overall: "PASS" as const,
   checks: [
-    { level: "OK" as const, name: "Remote origin", detail: "https://github.com/me/dotclaude.git" },
+    { level: "OK" as const, name: "remote origin", detail: "https://github.com/me/dotclaude.git" },
   ],
 };
 

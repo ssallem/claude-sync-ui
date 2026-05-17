@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- `errorDismissed` flag now resets when the user triggers `push` or `pull`, so a
+  fresh status-load failure after a sync surfaces in the `ErrorBanner` even if
+  the previous error was dismissed.
+
+### Changed
+- Window title — `index.html` now ships `<title>claude-sync</title>` instead of
+  the Vite/Tauri scaffolding default (`"Tauri + React + Typescript"`) that was
+  visible on the Windows taskbar.
+- Test fixture — `App.test.tsx` doctor check name lowercased to `"remote
+  origin"` to match the `parse.rs` source of truth (behaviorally a no-op since
+  `useRemoteUrl` lowercases before comparison).
+
+### Removed
+- Dead `--version` entry in the `capabilities/default.json` sidecar args
+  validator — the UI never invokes the sidecar with `--version`, so the
+  allowlist no longer advertises a subcommand the front end cannot reach.
+
 Candidates targeted for `v0.2`:
 
 - Conflict resolver UI — side-by-side diff with merge buttons for the

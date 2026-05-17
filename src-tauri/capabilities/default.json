@@ -14,7 +14,7 @@
           "name": "binaries/claude-sync",
           "sidecar": true,
           "args": [
-            { "validator": "^(init|status|push|pull|doctor|--version)$" },
+            { "validator": "^(init|status|push|pull|doctor)$" },
             { "validator": "^-m$" },
             { "validator": "^[^\\x00-\\x1f\\x7f]{1,2048}$" }
           ]

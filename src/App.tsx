@@ -42,9 +42,9 @@ function App() {
   }, [loading, toast]);
 
   const handlePush = useCallback(() => runAction("push",
-    async () => { await api.push(); setLastSyncAt(Date.now()); await refresh(); }), [runAction, refresh]);
+    async () => { setErrorDismissed(false); await api.push(); setLastSyncAt(Date.now()); await refresh(); }), [runAction, refresh]);
   const handlePull = useCallback(() => runAction("pull",
-    async () => { await api.pull(); setLastSyncAt(Date.now()); await refresh(); }), [runAction, refresh]);
+    async () => { setErrorDismissed(false); await api.pull(); setLastSyncAt(Date.now()); await refresh(); }), [runAction, refresh]);
   const handleRefresh = useCallback(() => runAction("refresh", async () => { setErrorDismissed(false); await refresh(); }), [runAction, refresh]);
   const handleResolve = useCallback(() => toast.error(
     "Conflict resolver coming in v0.2 — for now, edit ~/.claude/<file> manually and remove the '_conflicts' key, then push.",

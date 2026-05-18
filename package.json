@@ -2,6 +2,24 @@
   "name": "claude-sync-ui",
   "private": true,
   "version": "0.1.1",
+  "description": "Desktop GUI for claude-sync — sync ~/.claude/ across machines with one-click push/pull.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ssallem/claude-sync-ui.git"
+  },
+  "homepage": "https://github.com/ssallem/claude-sync-ui",
+  "keywords": [
+    "claude-code",
+    "claude-ai",
+    "tauri",
+    "dotfiles",
+    "sync",
+    "gui",
+    "desktop-app",
+    "windows"
+  ],
+  "author": "waytotec <mellass.kay@gmail.com>",
+  "license": "MIT OR Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -3,6 +3,7 @@
 
 import { useMemo } from "react";
 import type { StatusResult } from "../types";
+import { useTranslation } from "../i18n";
 
 export type ActionKey = "push" | "pull" | "resolve" | "refresh";
 
@@ -17,14 +18,13 @@ interface ActionBarProps {
 
 interface ActionButtonProps {
   label: string;
-  count?: number;
   variant: "primary" | "secondary" | "danger" | "ghost";
   disabled: boolean;
   loading: boolean;
   onClick: () => void;
 }
 
-function ActionButton({ label, count, variant, disabled, loading, onClick }: ActionButtonProps) {
+function ActionButton({ label, variant, disabled, loading, onClick }: ActionButtonProps) {
   const variants: Record<ActionButtonProps["variant"], string> = {
     primary: "bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white",
     secondary: "bg-slate-700 hover:bg-slate-600 active:bg-slate-800 text-slate-100",
@@ -36,13 +36,13 @@ function ActionButton({ label, count, variant, disabled, loading, onClick }: Act
   return (
     <button type="button" disabled={disabled} onClick={onClick} className={`${base} ${variants[variant]}${off}`}>
       <span>{label}</span>
-      {typeof count === "number" && <span className="font-mono text-xs">{count}</span>}
       {loading && <span className="animate-pulse">...</span>}
     </button>
   );
 }
 
 export default function ActionBar({ status, onPush, onPull, onResolve, onRefresh, loading }: ActionBarProps) {
+  const { t } = useTranslation();
   const ahead = status?.ahead ?? 0;
   const behind = status?.behind ?? 0;
   const conflicts = useMemo(
@@ -53,21 +53,21 @@ export default function ActionBar({ status, onPush, onPull, onResolve, onRefresh
   return (
     <div className="bg-slate-900/95 border-t border-slate-800 px-3 py-2 flex items-center gap-2">
       <ActionButton
-        label={`Push ${ahead}↑`}
+        label={t("action-bar.push", { n: ahead })}
         variant="primary"
         disabled={ahead === 0 || loading !== null}
         loading={loading === "push"}
         onClick={onPush}
       />
       <ActionButton
-        label={`Pull ${behind}↓`}
+        label={t("action-bar.pull", { n: behind })}
         variant="secondary"
         disabled={behind === 0 || loading !== null}
         loading={loading === "pull"}
         onClick={onPull}
       />
       <ActionButton
-        label={`Resolve Conflicts (${conflicts})`}
+        label={t("action-bar.resolve", { n: conflicts })}
         variant="danger"
         disabled={conflicts === 0 || loading !== null}
         loading={loading === "resolve"}
@@ -75,7 +75,7 @@ export default function ActionBar({ status, onPush, onPull, onResolve, onRefresh
       />
       <div className="flex-1" />
       <ActionButton
-        label="Refresh"
+        label={t("action-bar.refresh")}
         variant="ghost"
         disabled={loading !== null}
         loading={loading === "refresh"}

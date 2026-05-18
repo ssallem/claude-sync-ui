@@ -11,6 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useTranslation } from "../i18n";
 
 export type ToastVariant = "info" | "success" | "error";
 
@@ -75,6 +76,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 function ToastItemView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void }) {
+  const { t } = useTranslation();
   useEffect(() => {
     const timer = window.setTimeout(onDismiss, 5000);
     return () => window.clearTimeout(timer);
@@ -88,7 +90,7 @@ function ToastItemView({ item, onDismiss }: { item: ToastItem; onDismiss: () => 
       <button
         type="button"
         onClick={onDismiss}
-        aria-label="Dismiss"
+        aria-label={t("toast.dismiss-aria")}
         className="text-xs opacity-80 hover:opacity-100 px-1 leading-none"
       >
         ×

@@ -3,6 +3,8 @@
 // onSubmit. The parent owns the actual `api.init(remote)` call and decides what to render next.
 
 import { useMemo, useState } from "react";
+import { useTranslation } from "../i18n";
+import { isValidRemote } from "../lib/remote-validation";
 
 interface InitScreenProps {
   onSubmit: (remote: string) => Promise<void>;
@@ -10,14 +12,8 @@ interface InitScreenProps {
   error: string | null;
 }
 
-// Accept https://, git@, or a local path (Windows drive letter or POSIX absolute).
-const REMOTE_RE = /^(https?:\/\/\S+|git@\S+:\S+|[a-zA-Z]:[\\/].+|\/.+)$/;
-
-function isValidRemote(value: string): boolean {
-  return REMOTE_RE.test(value.trim());
-}
-
 export default function InitScreen({ onSubmit, loading, error }: InitScreenProps) {
+  const { t } = useTranslation();
   const [remote, setRemote] = useState<string>("");
   const trimmed = remote.trim();
   const valid = useMemo(() => isValidRemote(trimmed), [trimmed]);
@@ -35,28 +31,23 @@ export default function InitScreen({ onSubmit, loading, error }: InitScreenProps
         onSubmit={handleSubmit}
         className="max-w-lg w-full bg-slate-800 border border-slate-700 rounded-lg p-6 shadow-xl"
       >
-        <h1 className="text-2xl font-semibold mb-2">Welcome to claude-sync</h1>
-        <p className="text-sm text-slate-300 mb-4">
-          Sync ~/.claude across machines via Git. Enter the remote URL of an empty
-          (or already-claude-sync) Git repository to begin.
-        </p>
+        <h1 className="text-2xl font-semibold mb-2">{t("init-screen.welcome")}</h1>
+        <p className="text-sm text-slate-300 mb-4">{t("init-screen.description")}</p>
         <label htmlFor="remote-url" className="block text-xs uppercase tracking-wide text-slate-400 mb-1">
-          Remote URL
+          {t("init-screen.remote-url-label")}
         </label>
         <input
           id="remote-url"
           type="text"
           value={remote}
           onChange={(e) => setRemote(e.target.value)}
-          placeholder="https://github.com/you/dotclaude.git"
+          placeholder={t("init-screen.placeholder")}
           autoFocus
           disabled={loading}
           className="w-full px-3 py-2 rounded-md bg-slate-900 border border-slate-700 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
         />
         {trimmed.length > 0 && !valid && !error && (
-          <p className="mt-1 text-xs text-yellow-400">
-            Must start with https://, git@, or be an absolute local path.
-          </p>
+          <p className="mt-1 text-xs text-yellow-400">{t("init-screen.invalid")}</p>
         )}
         {error && (
           <p className="mt-2 text-sm text-red-400 break-words" role="alert">
@@ -68,11 +59,9 @@ export default function InitScreen({ onSubmit, loading, error }: InitScreenProps
           disabled={disabled}
           className="mt-4 w-full px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? "Initializing..." : "Initialize"}
+          {loading ? t("init-screen.submitting") : t("init-screen.submit")}
         </button>
-        <p className="mt-4 text-xs text-slate-500">
-          Tip: create an empty private repo on GitHub first.
-        </p>
+        <p className="mt-4 text-xs text-slate-500">{t("init-screen.tip")}</p>
       </form>
     </div>
   );

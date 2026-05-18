@@ -4,6 +4,7 @@
 import { useMemo } from "react";
 import type { ChangeEntry } from "../types";
 import StatusBadge from "./StatusBadge";
+import { useTranslation } from "../i18n";
 
 interface FileTreeProps {
   changes: ChangeEntry[];
@@ -17,12 +18,12 @@ interface Group {
   entries: { name: string; entry: ChangeEntry }[];
 }
 
-function groupByDir(changes: ChangeEntry[]): Group[] {
+function groupByDir(changes: ChangeEntry[], rootLabel: string): Group[] {
   const map = new Map<string, { name: string; entry: ChangeEntry }[]>();
   for (const c of changes) {
     const normalized = c.path.replace(/\\/g, "/");
     const idx = normalized.indexOf("/");
-    const dir = idx === -1 ? "(root)" : normalized.slice(0, idx);
+    const dir = idx === -1 ? rootLabel : normalized.slice(0, idx);
     const name = idx === -1 ? normalized : normalized.slice(idx + 1);
     if (!map.has(dir)) map.set(dir, []);
     map.get(dir)!.push({ name, entry: c });
@@ -33,14 +34,16 @@ function groupByDir(changes: ChangeEntry[]): Group[] {
 }
 
 export default function FileTree({ changes, tracked, excluded_stow, excluded_git }: FileTreeProps) {
-  const groups = useMemo(() => groupByDir(changes), [changes]);
+  const { t } = useTranslation();
+  const rootLabel = t("file-tree.root-bucket");
+  const groups = useMemo(() => groupByDir(changes, rootLabel), [changes, rootLabel]);
 
   return (
     <div className="flex flex-col h-full text-sm">
       <div className="flex-1 overflow-auto px-3 py-2">
         {changes.length === 0 ? (
           <div className="h-full flex items-center justify-center text-slate-400 italic">
-            No changes — clean
+            {t("file-tree.empty")}
           </div>
         ) : (
           <ul className="space-y-3">
@@ -48,7 +51,7 @@ export default function FileTree({ changes, tracked, excluded_stow, excluded_git
               <li key={g.dir}>
                 <div className="flex items-center gap-1 text-slate-300 font-medium">
                   <span className="text-slate-500">▼</span>
-                  <span className="font-mono">{g.dir === "(root)" ? g.dir : `${g.dir}/`}</span>
+                  <span className="font-mono">{g.dir === rootLabel ? g.dir : `${g.dir}/`}</span>
                   <span className="text-xs text-slate-500">({g.entries.length})</span>
                 </div>
                 <ul className="mt-1 pl-6 space-y-1">
@@ -67,7 +70,7 @@ export default function FileTree({ changes, tracked, excluded_stow, excluded_git
         )}
       </div>
       <div className="px-3 py-2 text-xs text-slate-400 border-t border-slate-800 bg-slate-900/60">
-        Tracking {tracked} file{tracked === 1 ? "" : "s"} (excluded: {excluded_stow} stow, {excluded_git} git)
+        {t("file-tree.tracking", { n: tracked, stow: excluded_stow, git: excluded_git })}
       </div>
     </div>
   );

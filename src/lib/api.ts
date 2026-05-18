@@ -25,4 +25,10 @@ export const api = {
   async doctor(): Promise<DoctorResult> {
     return invoke("doctor");
   },
+  // Rewrites the `[remote "origin"]` URL in ~/.claude/.git/config in place.
+  // `init` is idempotent in the sidecar (no-op on an already-initialized repo),
+  // so we need a dedicated command to update the remote post-init.
+  async setRemote(newUrl: string): Promise<void> {
+    await invoke("set_remote", { newUrl });
+  },
 };

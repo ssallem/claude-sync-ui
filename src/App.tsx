@@ -15,11 +15,25 @@ import { useRemoteUrl } from "./hooks/useRemoteUrl";
 import { useToast } from "./components/Toast";
 import { api } from "./lib/api";
 import { formatAgo } from "./lib/format";
+import { useTranslation } from "./i18n";
 
 const errMsg = (e: unknown) => typeof e === "string" ? e : (e as Error)?.message ?? String(e);
-const isNotInitialized = (e: string | null) => e !== null && e.toLowerCase().includes("not initialized");
+// Route to InitScreen for the sidecar's "Not initialized..." stdout (now normalized to Err
+// by Rust commands.rs even on exit 0), plus the underlying git failure that surfaces if the
+// repo gets blown away externally. Keep the patterns narrow — don't match generic network
+// failures or we'd send the user to InitScreen for transient errors.
+const isNotInitialized = (e: string | null): boolean => {
+  if (e === null) return false;
+  const m = e.toLowerCase();
+  if (m.includes("not initialized")) return true;
+  // Covers both git's "fatal: not a git repository (...)" wording and any
+  // wrapper that includes the canonical "not a git repository" phrase.
+  if (m.includes("not a git repository")) return true;
+  return false;
+};
 
 function App() {
+  const { t } = useTranslation();
   const { status, error, refresh } = useStatus();
   const toast = useToast();
   const [loading, setLoading] = useState<ActionKey | null>(null);
@@ -37,19 +51,27 @@ function App() {
     if (loading !== null) return;
     setLoading(key);
     try { await fn(); }
-    catch (e) { const m = errMsg(e); toast.error(`${key} failed: ${m}`); console.error(`[${key}] failed:`, m); }
+    catch (e) { const m = errMsg(e); toast.error(t("app.action-failed", { action: key, message: m })); console.error(`[${key}] failed:`, m); }
     finally { setLoading(null); }
-  }, [loading, toast]);
+  }, [loading, toast, t]);
 
   const handlePush = useCallback(() => runAction("push",
     async () => { setErrorDismissed(false); await api.push(); setLastSyncAt(Date.now()); await refresh(); }), [runAction, refresh]);
   const handlePull = useCallback(() => runAction("pull",
     async () => { setErrorDismissed(false); await api.pull(); setLastSyncAt(Date.now()); await refresh(); }), [runAction, refresh]);
   const handleRefresh = useCallback(() => runAction("refresh", async () => { setErrorDismissed(false); await refresh(); }), [runAction, refresh]);
-  const handleResolve = useCallback(() => toast.error(
-    "Conflict resolver coming in v0.2 — for now, edit ~/.claude/<file> manually and remove the '_conflicts' key, then push.",
-  ), [toast]);
+  const handleResolve = useCallback(() => toast.error(t("app.resolve-coming")), [toast, t]);
   const handleSettings = useCallback(() => setSettingsOpen(true), []);
+
+  // Called after a successful set_remote — bump the remote-refresh key so
+  // useRemoteUrl re-runs doctor and RemoteBar paints the new URL, plus
+  // re-fetch status in case the change made things diverge (e.g. new origin
+  // has a different default branch). SettingsModal already shows the success
+  // message inline, so we deliberately skip the toast here to avoid double-noise.
+  const handleRemoteChanged = useCallback(() => {
+    setRemoteRefreshKey((k) => k + 1);
+    void refresh();
+  }, [refresh]);
 
   const handleInit = useCallback(async (remote: string) => {
     setInitLoading(true); setInitError(null);
@@ -57,10 +79,10 @@ function App() {
       await api.init(remote);
       setRemoteRefreshKey((k) => k + 1);
       await refresh();
-      toast.success("Initialized! ~/.claude is now synced with the remote.");
+      toast.success(t("app.init-success"));
     } catch (e) { setInitError(errMsg(e)); }
     finally { setInitLoading(false); }
-  }, [refresh, toast]);
+  }, [refresh, toast, t]);
 
   if (isNotInitialized(error)) {
     return (
@@ -69,7 +91,12 @@ function App() {
         <div className="flex-1 overflow-auto">
           <InitScreen onSubmit={handleInit} loading={initLoading} error={initError} />
         </div>
-        <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+        <SettingsModal
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          currentRemote={remoteUrl}
+          onRemoteChanged={handleRemoteChanged}
+        />
       </div>
     );
   }
@@ -90,7 +117,12 @@ function App() {
       <ActionBar status={status} onPush={handlePush} onPull={handlePull}
         onResolve={handleResolve} onRefresh={handleRefresh} loading={loading} />
       <StatusBar status={status} lastSync={lastSyncLabel} />
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        currentRemote={remoteUrl}
+        onRemoteChanged={handleRemoteChanged}
+      />
     </div>
   );
 }

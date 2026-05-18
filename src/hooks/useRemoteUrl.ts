@@ -16,7 +16,11 @@ export function useRemoteUrl(initialized: boolean, triggerKey: number): string {
       .then((d) => {
         if (!alive) return;
         const origin = d.checks.find((c) => c.name.toLowerCase() === "remote origin");
-        if (origin && origin.detail && origin.level === "OK") setRemote(origin.detail);
+        // Show the URL as long as doctor didn't outright fail to read it. A
+        // WARN level (e.g. unreachable remote, auth not validated) still
+        // carries the configured URL in `detail` and is far more useful than
+        // "(unknown remote)" — the doctor report itself surfaces the warning.
+        if (origin && origin.detail && origin.level !== "FAIL") setRemote(origin.detail);
       })
       .catch(() => { /* non-fatal: leave UNKNOWN_REMOTE */ });
     return () => { alive = false; };

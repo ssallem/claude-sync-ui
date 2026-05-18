@@ -6,31 +6,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed
-- `errorDismissed` flag now resets when the user triggers `push` or `pull`, so a
-  fresh status-load failure after a sync surfaces in the `ErrorBanner` even if
-  the previous error was dismissed.
-
-### Documentation
-- **Screenshots** — added auto-captured screenshots (mock-mode React UI) for the
-  three primary states (first run, synced, conflict toast). Replaces the
-  `Screenshots coming soon` placeholder. Captured by `npm run screenshots` via
-  Playwright + system Edge against `index-mock.html` (a stubbed-`invoke()` Vite
-  entry that never starts a real Tauri runtime).
-
-### Changed
-- Window title — `index.html` now ships `<title>claude-sync</title>` instead of
-  the Vite/Tauri scaffolding default (`"Tauri + React + Typescript"`) that was
-  visible on the Windows taskbar.
-- Test fixture — `App.test.tsx` doctor check name lowercased to `"remote
-  origin"` to match the `parse.rs` source of truth (behaviorally a no-op since
-  `useRemoteUrl` lowercases before comparison).
-
-### Removed
-- Dead `--version` entry in the `capabilities/default.json` sidecar args
-  validator — the UI never invokes the sidecar with `--version`, so the
-  allowlist no longer advertises a subcommand the front end cannot reach.
-
 Candidates targeted for `v0.2`:
 
 - Conflict resolver UI — side-by-side diff with merge buttons for the
@@ -46,6 +21,78 @@ Candidates targeted for `v0.2`:
   longer needs a second `doctor` round-trip.
 - Differentiated exit codes from the CLI for the pull-conflict path so the
   Tauri layer can stop string-matching `"Merged with conflicts"`.
+- `[remote 'origin']` (single-quoted) and tab-indented section headers in
+  `~/.claude/.git/config` — `set_remote` currently only handles the canonical
+  `[remote "origin"]` form.
+- README — add a one-line note about the in-app Korean/English language toggle.
+
+## [0.1.2] - 2026-05-18
+
+Hotfix + i18n release. Restores the InitScreen entry path that v0.1.x silently
+skipped, adds an in-app remote URL editor, and ships Korean (한국어) UI
+translations.
+
+### Added
+- **Korean (한국어) language support** — full UI translation behind a tiny
+  in-house i18n runtime (`src/i18n/`, ~1 KB). Initial locale is auto-detected
+  from `navigator.language` (`ko*` → Korean, otherwise English) and the user
+  can switch at runtime from the Settings modal language dropdown. Selection
+  persists in `localStorage` and updates `document.documentElement.lang` for
+  screen readers.
+- **`set_remote` Tauri command** — atomically rewrites the `[remote "origin"]`
+  URL in `~/.claude/.git/config` using a pid-stamped temp file + rename. No
+  sidecar shell-out, no new Rust crate.
+- **Settings modal — inline `Change remote` form** — replaces the placeholder
+  message with a real input, client + server-side URL validation, and inline
+  success / error feedback. URL pattern is shared with `InitScreen` via
+  `src/lib/remote-validation.ts` (`https://`, `ssh://`, `git@`, or absolute
+  local path).
+- **Auto-captured screenshots** (carried over from the
+  unreleased `8af66ac` work) — three mock-mode PNGs (first run, synced,
+  conflict toast) rendered via `npm run screenshots` (Playwright + system
+  Edge against the stubbed `index-mock.html` Vite entry).
+
+### Fixed
+- **InitScreen no longer skipped on a fresh `~/.claude/`** — `claude-sync
+  status` (and `pull`/`push`) returns exit 0 + stdout `Not initialized. ...`
+  when the directory is not a git repo. The Tauri layer previously parsed this
+  as an empty success and dropped the user on the main screen with no path
+  back to init. `commands.rs` now shares an `is_not_initialized_stdout` guard
+  across `status` / `pull` / `push` that converts this stdout into an `Err`,
+  restoring the InitScreen branch.
+- **`isNotInitialized` (App.tsx)** — predicate also recognizes raw git
+  `not a git repository` errors so the InitScreen still appears if `git`
+  itself complains before `claude-sync` has a chance to print.
+- **`useRemoteUrl`** — the configured remote URL is now shown when the
+  doctor `remote origin` check is `WARN` (e.g. unauthenticated fetch); the
+  previous `level === "OK"` gate caused `(unknown remote)` to display even
+  when the URL was perfectly fine.
+- **Duplicate success toast on remote change** — `App.tsx` no longer fires
+  `toast.success` in addition to the modal's inline success message.
+- **`errorDismissed`** — flag now resets when the user triggers `push` /
+  `pull`, so a fresh status-load failure after a sync surfaces in the
+  `ErrorBanner` even when the previous error was dismissed.
+
+### Changed
+- **URL validation** — `InitScreen` and `SettingsModal` now share a single
+  `REMOTE_RE` from `src/lib/remote-validation.ts`. The error copy in both
+  English and Korean explicitly lists `ssh://` alongside `https://` and `git@`.
+- **Window title** — `index.html` ships `<title>claude-sync</title>` (was the
+  Vite/Tauri scaffolding default `"Tauri + React + Typescript"` visible on the
+  Windows taskbar).
+
+### Removed
+- Dead i18n key `settings-modal.change-remote-not-supported` (English +
+  Korean) — superseded by the real `Change remote` form.
+- Dead duplicate branch in `isNotInitialized` (`"fatal:" && "not a git"`) —
+  already covered by `"not a git repository"`.
+- Dead `--version` entry in the `capabilities/default.json` sidecar args
+  validator allowlist.
+
+### Security
+- **`set_remote` atomic rewrite** — uses `config.tmp.{pid}.{nanos}` for the
+  staging filename so concurrent Tauri window instances or external scripts
+  cannot stomp the same temp file mid-write.
 
 ## [0.1.1] - 2026-05-17
 

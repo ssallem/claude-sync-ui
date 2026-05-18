@@ -2,10 +2,17 @@
 // Uses a real StatusBadge child render so the badge label assertions also
 // confirm the M/A/?/! kinds get through the parent intact.
 
+import React from "react";
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
 import FileTree from "./FileTree";
 import type { ChangeEntry } from "../types";
+import { LanguageProvider } from "../i18n";
+
+// Wrap renders so FileTree's useTranslation hook has a provider; pin to English
+// for stable text assertions.
+const render = (ui: React.ReactElement) =>
+  rtlRender(<LanguageProvider initialLang="en">{ui}</LanguageProvider>);
 
 describe("FileTree", () => {
   it("shows the 'No changes — clean' empty state and a tracking footer when changes are empty", () => {

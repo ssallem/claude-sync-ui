@@ -1,6 +1,8 @@
 // Tauri commands wrapping the claude-sync sidecar.
 // All commands run the sidecar via run_sidecar, then parse stdout into typed structs.
 
+use std::path::PathBuf;
+
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
 
@@ -82,6 +84,15 @@ fn fail_message(stderr: &str, stdout: &str) -> String {
     "claude-sync exited with non-zero status".to_string()
 }
 
+// claude-sync 0.x prints "Not initialized. Run `claude-sync init <remote>` first."
+// on stdout with exit code 0 for read-only commands (status, doctor, pull). The
+// UI needs an Err for that case so App.tsx can route to InitScreen — otherwise
+// parse_status produces an empty StatusResult and the user lands on a broken
+// main screen with no way out. Match leniently on the stdout prefix.
+fn is_not_initialized_stdout(stdout: &str) -> bool {
+    stdout.trim_start().starts_with("Not initialized")
+}
+
 // Defense in depth: the capability validator already rejects control chars and
 // >2048-char strings, but we also sanity-check the URL in Rust so a future
 // capability widening can't accidentally let bad input through to git.
@@ -114,6 +125,11 @@ pub async fn status(app: AppHandle) -> Result<StatusResult, String> {
     if code != 0 {
         return Err(fail_message(&stderr, &stdout));
     }
+    // Sidecar prints "Not initialized..." on stdout with exit 0 — translate to Err
+    // so App.tsx can route to InitScreen instead of rendering an empty StatusResult.
+    if is_not_initialized_stdout(&stdout) {
+        return Err(stdout.trim().to_string());
+    }
     Ok(parse::parse_status(&stdout))
 }
 
@@ -131,8 +147,8 @@ pub async fn push(app: AppHandle, message: Option<String>) -> Result<PushResult,
         return Err(fail_message(&stderr, &stdout));
     }
     // "Not initialized" comes back on stdout w/ non-zero exit in the spec, but be defensive.
-    if stdout.contains("Not initialized") {
-        return Err("Not initialized".to_string());
+    if is_not_initialized_stdout(&stdout) {
+        return Err(stdout.trim().to_string());
     }
     Ok(parse::parse_push(&stdout))
 }
@@ -144,6 +160,10 @@ pub async fn pull(app: AppHandle) -> Result<PullResult, String> {
     if code != 0 && !stdout.contains("Merged with conflicts") {
         return Err(fail_message(&stderr, &stdout));
     }
+    // Same "exit 0 + Not initialized on stdout" trap as status — surface to UI.
+    if is_not_initialized_stdout(&stdout) {
+        return Err(stdout.trim().to_string());
+    }
     Ok(parse::parse_pull(&stdout))
 }
 
@@ -154,9 +174,120 @@ pub async fn doctor(app: AppHandle) -> Result<DoctorResult, String> {
     Ok(parse::parse_doctor(&stdout))
 }
 
+// Resolve `~/.claude/` using the same env-var precedence as the sidecar's
+// `commands::util::home_dir`: HOME first, then USERPROFILE. Honors env overrides
+// so tests can redirect the lookup without touching the real user profile.
+fn resolve_claude_dir() -> Result<PathBuf, String> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+        .ok_or_else(|| "could not determine home directory".to_string())?;
+    Ok(home.join(".claude"))
+}
+
+// Rewrite the `url = ...` line inside `[remote "origin"]` of a git config text.
+// We only mutate the first url inside the first origin section — anything else
+// is left untouched so we don't accidentally clobber comments, push URLs, or
+// other remotes. Returns Err if no origin section or no url line is present.
+fn rewrite_origin_url(config: &str, new_url: &str) -> Result<String, String> {
+    let mut out = String::new();
+    let mut in_origin = false;
+    let mut url_replaced = false;
+    let mut found_origin = false;
+    let trailing_newline = config.ends_with('\n');
+    for line in config.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('[') {
+            // Section header — switch context, preserve original line verbatim.
+            in_origin = trimmed.trim_end() == "[remote \"origin\"]";
+            if in_origin {
+                found_origin = true;
+            }
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        if in_origin && !url_replaced {
+            // Match `url = ...` / `url=...` (git is case-sensitive on keys).
+            let after_ws = line.trim_start();
+            if let Some(rest) = after_ws.strip_prefix("url") {
+                let rest = rest.trim_start();
+                if rest.starts_with('=') {
+                    let leading_ws: String =
+                        line.chars().take_while(|c| c.is_whitespace()).collect();
+                    out.push_str(&leading_ws);
+                    out.push_str("url = ");
+                    out.push_str(new_url);
+                    out.push('\n');
+                    url_replaced = true;
+                    continue;
+                }
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if !found_origin {
+        return Err("origin remote not found in git config".to_string());
+    }
+    if !url_replaced {
+        return Err("origin url not found in git config".to_string());
+    }
+    // Preserve the original file's trailing-newline state — `lines()` strips it.
+    if !trailing_newline && out.ends_with('\n') {
+        out.pop();
+    }
+    Ok(out)
+}
+
+// Atomically replace the `[remote "origin"]` URL in `~/.claude/.git/config`.
+// Pure Rust (no shell out, no git2 dep) — we just read-modify-write the INI file.
+// Writes via a sibling tempfile + rename so a crash mid-write can't corrupt the
+// user's git config.
+#[tauri::command]
+pub async fn set_remote(new_url: String) -> Result<(), String> {
+    validate_remote_url(&new_url)?;
+    let claude_dir = resolve_claude_dir()?;
+    let config_path = claude_dir.join(".git").join("config");
+    if !config_path.exists() {
+        return Err(
+            "Not initialized. Run `claude-sync init <remote>` first.".to_string(),
+        );
+    }
+    let original = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("read {}: {e}", config_path.display()))?;
+    let updated = rewrite_origin_url(&original, &new_url)?;
+    if updated == original {
+        // No-op: nothing to write, no risk to take.
+        return Ok(());
+    }
+    // Per-call unique tempfile name so two concurrent set_remote invocations
+    // (rare, but possible if the user double-clicks the Update button while
+    // the modal hasn't disabled yet) don't trample each other's write. PID +
+    // nanos is enough entropy for the realistic concurrency we expect here
+    // without pulling in the `tempfile` crate.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let tmp_name = format!("config.tmp.{}.{}", std::process::id(), nanos);
+    let tmp_path = config_path.with_file_name(tmp_name);
+    std::fs::write(&tmp_path, &updated)
+        .map_err(|e| format!("write {}: {e}", tmp_path.display()))?;
+    std::fs::rename(&tmp_path, &config_path).map_err(|e| {
+        // Best-effort cleanup so we don't leave a stray config.tmp.* behind.
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("replace {}: {e}", config_path.display())
+    })?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::validate_remote_url;
+    use super::{
+        fail_message, is_not_initialized_stdout, rewrite_origin_url, validate_remote_url,
+    };
 
     #[test]
     fn rejects_empty_url() {
@@ -187,5 +318,89 @@ mod tests {
     fn accepts_max_length_url() {
         let url = "a".repeat(2048);
         assert!(validate_remote_url(&url).is_ok());
+    }
+
+    // Regression: claude-sync 0.x prints "Not initialized..." on stdout with
+    // exit code 0 for read-only commands. The helper must flag that string so
+    // status() returns Err and the UI shows InitScreen.
+    #[test]
+    fn detects_not_initialized_stdout() {
+        assert!(is_not_initialized_stdout(
+            "Not initialized. Run `claude-sync init <remote>` first.\n"
+        ));
+        // Tolerate leading whitespace — the sidecar might add a newline first.
+        assert!(is_not_initialized_stdout(
+            "\n  Not initialized. Run `claude-sync init <remote>` first."
+        ));
+    }
+
+    #[test]
+    fn ignores_unrelated_stdout() {
+        assert!(!is_not_initialized_stdout(""));
+        assert!(!is_not_initialized_stdout(
+            "Branch: main (ahead 0, behind 0)\nNothing changed\n"
+        ));
+        assert!(!is_not_initialized_stdout(
+            "Pushed 3 file(s) -> origin/main\n"
+        ));
+        // "not initialized" lowercase elsewhere in the line must not trigger it.
+        assert!(!is_not_initialized_stdout(
+            "Branch: main\n  some submodule is not initialized yet\n"
+        ));
+    }
+
+    #[test]
+    fn fail_message_prefers_stderr_then_stdout_then_default() {
+        assert_eq!(fail_message("boom", "ignored"), "boom");
+        assert_eq!(fail_message("", "stdout body"), "stdout body");
+        assert_eq!(
+            fail_message("", ""),
+            "claude-sync exited with non-zero status"
+        );
+    }
+
+    // Typical config produced by `git2::Repository::remote("origin", ...)` —
+    // tab indented, `url = ...` on its own line. Make sure the rewrite hits
+    // only that line and leaves everything else alone.
+    #[test]
+    fn rewrite_replaces_origin_url() {
+        let input = "[core]\n\trepositoryformatversion = 0\n[remote \"origin\"]\n\turl = git@old.example.com:me/dot.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n";
+        let out = rewrite_origin_url(input, "git@new.example.com:me/dot.git").unwrap();
+        assert!(out.contains("url = git@new.example.com:me/dot.git"));
+        assert!(!out.contains("git@old.example.com"));
+        // The fetch line and other sections must survive unchanged.
+        assert!(out.contains("fetch = +refs/heads/*:refs/remotes/origin/*"));
+        assert!(out.contains("[core]"));
+        assert!(out.contains("repositoryformatversion = 0"));
+    }
+
+    // Other remotes (e.g. an `upstream` mirror) and any non-url keys in the
+    // origin section must be preserved untouched.
+    #[test]
+    fn rewrite_only_touches_origin_section() {
+        let input = "[remote \"origin\"]\n\turl = https://old/a.git\n[remote \"upstream\"]\n\turl = https://other/b.git\n";
+        let out = rewrite_origin_url(input, "https://new/a.git").unwrap();
+        assert!(out.contains("url = https://new/a.git"));
+        assert!(out.contains("url = https://other/b.git"));
+    }
+
+    #[test]
+    fn rewrite_fails_without_origin_section() {
+        let input = "[core]\n\trepositoryformatversion = 0\n";
+        assert!(rewrite_origin_url(input, "git@new/repo.git").is_err());
+    }
+
+    #[test]
+    fn rewrite_fails_with_origin_but_no_url() {
+        let input = "[remote \"origin\"]\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n";
+        assert!(rewrite_origin_url(input, "git@new/repo.git").is_err());
+    }
+
+    #[test]
+    fn rewrite_preserves_trailing_newline_state() {
+        let with_nl = "[remote \"origin\"]\n\turl = a\n";
+        let no_nl = "[remote \"origin\"]\n\turl = a";
+        assert!(rewrite_origin_url(with_nl, "b").unwrap().ends_with('\n'));
+        assert!(!rewrite_origin_url(no_nl, "b").unwrap().ends_with('\n'));
     }
 }

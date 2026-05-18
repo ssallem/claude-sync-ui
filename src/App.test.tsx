@@ -11,6 +11,7 @@ import { render, screen, waitFor, act } from "@testing-library/react";
 import { invokeMock, mapResponses } from "./test/invokeMock";
 import App from "./App";
 import { ToastProvider } from "./components/Toast";
+import { LanguageProvider } from "./i18n";
 import type { StatusResult } from "./types";
 
 // Hoisted by Vitest — must reference the singleton from invokeMock.ts.
@@ -19,10 +20,14 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 function renderApp() {
+  // LanguageProvider with initialLang="en" so text-matching assertions stay
+  // stable regardless of host locale or persisted localStorage state.
   return render(
-    <ToastProvider>
-      <App />
-    </ToastProvider>,
+    <LanguageProvider initialLang="en">
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    </LanguageProvider>,
   );
 }
 
@@ -63,6 +68,39 @@ describe("App (integration)", () => {
     // Init screen exposes a Remote URL input and an Initialize button.
     expect(screen.getByLabelText(/Remote URL/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Initialize/i })).toBeInTheDocument();
+  });
+
+  // Regression: real sidecar prints "Not initialized." with exit 0; Rust commands.rs
+  // now translates that to a rejected promise carrying the original stdout. The
+  // exact wording from the binary is "Not initialized. Run `claude-sync init <remote>` first."
+  it("renders InitScreen when status() rejects with sidecar exit-0 wording", async () => {
+    mapResponses({
+      status: async () => {
+        throw "Not initialized. Run `claude-sync init <remote>` first.";
+      },
+    });
+
+    renderApp();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Welcome to claude-sync/i)).toBeInTheDocument();
+    });
+  });
+
+  // If the repo is wiped externally, git surfaces "fatal: not a git repository"
+  // instead of "Not initialized". Route those to InitScreen too — same recovery path.
+  it("renders InitScreen when status() rejects with 'not a git repository'", async () => {
+    mapResponses({
+      status: async () => {
+        throw "fatal: not a git repository (or any of the parent directories): .git";
+      },
+    });
+
+    renderApp();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Welcome to claude-sync/i)).toBeInTheDocument();
+    });
   });
 
   it("renders FileTree + ActionBar when status() resolves with a StatusResult", async () => {

@@ -2,9 +2,16 @@
 // expected single-letter label *and* keeps the colour-class contract the
 // rest of the UI depends on (FileTree groups, ActionBar conflict tint).
 
+import React from "react";
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
 import StatusBadge from "./StatusBadge";
+import { LanguageProvider } from "../i18n";
+
+// Wrap renders so StatusBadge's useTranslation hook has a provider; pin to
+// English for stable title-attribute assertions.
+const render = (ui: React.ReactElement) =>
+  rtlRender(<LanguageProvider initialLang="en">{ui}</LanguageProvider>);
 
 interface Case {
   kind: "M" | "A" | "D" | "?" | "!" | "synced";

@@ -26,6 +26,29 @@ Candidates targeted for `v0.2`:
   `[remote "origin"]` form.
 - README — add a one-line note about the in-app Korean/English language toggle.
 
+## [0.1.3] - 2026-05-19
+
+Security release. All Windows installers (`.msi` + `.exe`) and the bundled
+`claude-sync` sidecar binary are now Authenticode-signed with an EV code
+signing certificate, eliminating the SmartScreen "Unrecognized app"
+warning that v0.1.x unsigned builds tripped on first run.
+
+### Security
+- **Code signing** — `tauri.conf.json` declares `bundle.windows.signCommand`
+  (object form: `{cmd, args[]}`) that invokes Windows SDK `signtool.exe`
+  with an EV certificate (Subject `JCG Inc.`, Issuer DigiCert Trusted G4
+  Code Signing RSA4096 SHA384 2021 CA1). Every `npm run tauri build`
+  produces signed `.msi`, `.exe`, and a signed
+  `claude-sync-x86_64-pc-windows-msvc.exe` sidecar (Tauri picks up
+  `externalBin` automatically). Timestamping via
+  `http://timestamp.digicert.com` so the signature stays valid past the
+  certificate's `NotAfter` (2026-07-31).
+
+### Changed
+- Installer size — msi `5,804,032` → `5,840,896` B (+36 KB), nsis
+  `3,551,742` → `3,611,176` B (+59 KB). Delta is the Authenticode
+  signature + timestamp block.
+
 ## [0.1.2] - 2026-05-18
 
 Hotfix + i18n release. Restores the InitScreen entry path that v0.1.x silently

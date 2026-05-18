@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
 
+use crate::github;
 use crate::parse;
 
 #[derive(serde::Serialize, Clone)]
@@ -281,6 +282,45 @@ pub async fn set_remote(new_url: String) -> Result<(), String> {
         format!("replace {}: {e}", config_path.display())
     })?;
     Ok(())
+}
+
+// ---- GitHub OAuth Device Flow (Phase B v0.2) -------------------------------
+// These commands are stateless: the polling loop lives in the TS layer so we
+// don't have to manage a long-running tokio task tied to a window's lifetime.
+
+#[tauri::command]
+pub async fn github_device_start() -> Result<github::DeviceCodeResponse, String> {
+    github::start_device_flow().await
+}
+
+#[tauri::command]
+pub async fn github_device_poll(
+    device_code: String,
+    current_interval: u64,
+) -> Result<github::DevicePollResponse, String> {
+    github::poll_device_flow(&device_code, current_interval).await
+}
+
+#[tauri::command]
+pub fn github_is_logged_in() -> Result<bool, String> {
+    Ok(github::has_token())
+}
+
+#[tauri::command]
+pub fn github_logout() -> Result<(), String> {
+    github::delete_token()
+}
+
+// Create a private GitHub repo on the authenticated user's account so the
+// FE can immediately pipe the returned `clone_url` into `claude-sync init`.
+// The actual error-string contract (not_logged_in / token_expired /
+// forbidden / repo_taken / github_api_error:*) lives in github::create_repo.
+#[tauri::command]
+pub async fn github_create_repo(
+    name: String,
+    description: Option<String>,
+) -> Result<github::RepoCreateResponse, String> {
+    github::create_repo(&name, description.as_deref()).await
 }
 
 #[cfg(test)]

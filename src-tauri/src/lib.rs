@@ -1,4 +1,5 @@
 mod commands;
+mod github;
 mod parse;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -12,7 +13,12 @@ pub fn run() {
             commands::push,
             commands::pull,
             commands::doctor,
-            commands::set_remote
+            commands::set_remote,
+            commands::github_device_start,
+            commands::github_device_poll,
+            commands::github_is_logged_in,
+            commands::github_logout,
+            commands::github_create_repo
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

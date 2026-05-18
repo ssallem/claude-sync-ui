@@ -53,7 +53,8 @@ export const ko: Dict = {
   "init-screen.invalid": "https://, ssh://, git@로 시작하거나 로컬 절대 경로여야 합니다.",
   "init-screen.submit": "초기화",
   "init-screen.submitting": "초기화 중...",
-  "init-screen.tip": "팁: 먼저 GitHub에 비어있는 비공개 저장소를 만드세요.",
+  "init-screen.tip": "원격 저장소가 미리 존재하고 push 권한이 있어야 합니다.",
+  "init-screen.or": "또는",
 
   // SettingsModal
   "settings-modal.title": "설정",
@@ -70,6 +71,8 @@ export const ko: Dict = {
   "settings-modal.cancel": "취소",
   "settings-modal.update-success": "원격이 성공적으로 변경되었습니다",
   "settings-modal.language": "언어",
+  "settings-modal.github-logout": "GitHub 계정 연결 해제",
+  "settings-modal.github-logout-success": "GitHub 계정이 연결 해제되었습니다.",
 
   // ErrorBanner
   "error-banner.label": "오류",
@@ -88,4 +91,40 @@ export const ko: Dict = {
   "doctor.level.ok": "정상",
   "doctor.level.warn": "경고",
   "doctor.level.fail": "실패",
+
+  // GitHubAuthFlow — OAuth Device Flow UI strings.
+  "github.auth.preparing": "GitHub 로그인 준비 중...",
+  "github.auth.enter-code-at": "{url}에서 이 코드를 입력하세요",
+  "github.auth.copy-code": "코드 복사",
+  "github.auth.copy-success": "복사됨",
+  "github.auth.open-browser": "브라우저에서 열기",
+  "github.auth.expires-in": "{min}:{sec} 후 만료",
+  "github.auth.polling": "승인을 기다리는 중...",
+  "github.auth.cancel": "취소",
+  "github.auth.scope-notice":
+    "이 앱은 비공개 저장소 생성 권한(repo)을 요청합니다.",
+  "github.auth.success": "연결되었습니다",
+  "github.auth.try-again": "다시 시도",
+  "github.error.expired": "코드가 만료되었습니다. 다시 시도해주세요.",
+  "github.error.denied": "요청을 거부하셨습니다.",
+  "github.error.network": "네트워크 오류입니다. 연결을 확인해주세요.",
+
+  // GitHub OAuth — login entry + RepoCreator screen (B-3-2).
+  "github.auth.button-login": "GitHub으로 로그인",
+  "github.repo.title": "비공개 저장소 만들기",
+  "github.repo.name-label": "저장소 이름",
+  "github.repo.private-notice": "저장소는 비공개로 생성됩니다.",
+  "github.repo.description":
+    "여러분의 GitHub 계정에 만들어 설정 동기화에 사용됩니다.",
+  "github.repo.create-button": "비공개 저장소 생성",
+  "github.repo.creating": "생성 중...",
+  "github.repo.back": "뒤로",
+  "github.error.repo-taken":
+    "같은 이름의 저장소가 이미 있습니다. 다른 이름을 입력해주세요.",
+  "github.error.forbidden":
+    "GitHub이 요청을 거부했습니다. 계정 권한을 확인해주세요.",
+  "github.error.token-expired":
+    "GitHub 세션이 만료되었습니다. 다시 로그인해주세요.",
+  "github.error.invalid-name": "저장소 이름은 비워둘 수 없습니다.",
+  "github.error.not-logged-in": "먼저 GitHub에 로그인해주세요.",
 };

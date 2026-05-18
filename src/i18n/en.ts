@@ -56,7 +56,8 @@ export const en: Dict = {
   "init-screen.invalid": "Must start with https://, ssh://, git@, or be an absolute local path.",
   "init-screen.submit": "Initialize",
   "init-screen.submitting": "Initializing...",
-  "init-screen.tip": "Tip: create an empty private repo on GitHub first.",
+  "init-screen.tip": "Make sure the remote already exists and you have push access.",
+  "init-screen.or": "or",
 
   // SettingsModal
   "settings-modal.title": "Settings",
@@ -73,6 +74,8 @@ export const en: Dict = {
   "settings-modal.cancel": "Cancel",
   "settings-modal.update-success": "Remote updated successfully",
   "settings-modal.language": "Language",
+  "settings-modal.github-logout": "Disconnect GitHub",
+  "settings-modal.github-logout-success": "GitHub account disconnected.",
 
   // ErrorBanner
   "error-banner.label": "Error",
@@ -91,4 +94,43 @@ export const en: Dict = {
   "doctor.level.ok": "OK",
   "doctor.level.warn": "WARN",
   "doctor.level.fail": "FAIL",
+
+  // GitHubAuthFlow — OAuth Device Flow UI strings.
+  // Placeholders: {url} = verification_uri, {min}/{sec} = countdown components.
+  "github.auth.preparing": "Preparing GitHub sign-in...",
+  "github.auth.enter-code-at": "Enter this code at {url}",
+  "github.auth.copy-code": "Copy code",
+  "github.auth.copy-success": "Copied",
+  "github.auth.open-browser": "Open in browser",
+  "github.auth.expires-in": "Expires in {min}:{sec}",
+  "github.auth.polling": "Waiting for you to authorize...",
+  "github.auth.cancel": "Cancel",
+  "github.auth.scope-notice":
+    "This app requests permission to create private repositories (repo scope).",
+  "github.auth.success": "Connected successfully",
+  "github.auth.try-again": "Try again",
+  "github.error.expired": "The code expired. Please try again.",
+  "github.error.denied": "You denied the request.",
+  "github.error.network": "Network error. Please check your connection.",
+
+  // GitHub OAuth — login entry + RepoCreator screen.
+  // Placeholder: none. Keys cover button labels, validation messages,
+  // and the GitHub API error-string-to-i18n mapping (see github.rs).
+  "github.auth.button-login": "Sign in with GitHub",
+  "github.repo.title": "Create a private repository",
+  "github.repo.name-label": "Repository name",
+  "github.repo.private-notice": "The repository will be created as private.",
+  "github.repo.description":
+    "We'll create this on your GitHub account and use it to sync your settings.",
+  "github.repo.create-button": "Create private repository",
+  "github.repo.creating": "Creating...",
+  "github.repo.back": "Back",
+  "github.error.repo-taken":
+    "A repository with this name already exists. Try a different name.",
+  "github.error.forbidden":
+    "GitHub rejected the request. Check your account permissions.",
+  "github.error.token-expired":
+    "Your GitHub session expired. Please sign in again.",
+  "github.error.invalid-name": "Repository name cannot be empty.",
+  "github.error.not-logged-in": "You need to sign in to GitHub first.",
 };

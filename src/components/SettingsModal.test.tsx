@@ -8,11 +8,18 @@ import { render, screen, waitFor, act, fireEvent } from "@testing-library/react"
 import { invokeMock, mapResponses } from "../test/invokeMock";
 import SettingsModal from "./SettingsModal";
 import { LanguageProvider } from "../i18n";
+import { ToastProvider } from "./Toast";
 
 // Wrap renders in LanguageProvider (pinned to English) so t() works and assertion
-// texts stay stable regardless of host locale.
+// texts stay stable regardless of host locale. ToastProvider is required because
+// SettingsModal calls useToast() for the GitHub-disconnect success/error toast
+// since B-3-2 — without it, mounting throws.
 function renderModal(ui: React.ReactElement) {
-  return render(<LanguageProvider initialLang="en">{ui}</LanguageProvider>);
+  return render(
+    <LanguageProvider initialLang="en">
+      <ToastProvider>{ui}</ToastProvider>
+    </LanguageProvider>,
+  );
 }
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -36,7 +43,10 @@ describe("SettingsModal — change remote form", () => {
   });
 
   it("expands the inline form when 'Change remote' is clicked", async () => {
-    mapResponses({ doctor: async () => okDoctor });
+    mapResponses({
+      doctor: async () => okDoctor,
+      github_is_logged_in: async () => false,
+    });
 
     renderModal(
       <SettingsModal
@@ -69,6 +79,7 @@ describe("SettingsModal — change remote form", () => {
     mapResponses({
       doctor: async () => okDoctor,
       set_remote: async () => null,
+      github_is_logged_in: async () => false,
     });
 
     const onRemoteChanged = vi.fn();
@@ -119,6 +130,7 @@ describe("SettingsModal — change remote form", () => {
     mapResponses({
       doctor: async () => okDoctor,
       set_remote: async () => null,
+      github_is_logged_in: async () => false,
     });
 
     renderModal(
@@ -155,6 +167,7 @@ describe("SettingsModal — change remote form", () => {
   it("surfaces a Tauri error inline and keeps the modal open", async () => {
     mapResponses({
       doctor: async () => okDoctor,
+      github_is_logged_in: async () => false,
       set_remote: async () => {
         throw "origin remote not found in git config";
       },

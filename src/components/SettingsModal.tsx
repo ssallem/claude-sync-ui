@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import type { DoctorCheck, DoctorLevel, DoctorResult } from "../types";
 import { useTranslation, type Lang } from "../i18n";
+import { useToast } from "./Toast";
 import { isValidRemote } from "../lib/remote-validation";
 
 interface SettingsModalProps {
@@ -33,6 +34,7 @@ export default function SettingsModal({
   onRemoteChanged,
 }: SettingsModalProps) {
   const { t, lang, setLang } = useTranslation();
+  const toast = useToast();
   const [doctor, setDoctor] = useState<DoctorResult | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +46,14 @@ export default function SettingsModal({
   const [updating, setUpdating] = useState<boolean>(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // GitHub-logged-in state. We fetch on modal open so the button only appears
+  // when there's actually a token to disconnect — otherwise it's noise. A
+  // failure to read is treated as "not logged in" (fail-safe: hide the button)
+  // rather than surfacing an error, since the modal is also used for plain
+  // doctor checks where this state is incidental.
+  const [githubLoggedIn, setGithubLoggedIn] = useState<boolean>(false);
+  const [logoutBusy, setLogoutBusy] = useState<boolean>(false);
 
   const trimmed = newRemote.trim();
   const valid = useMemo(() => isValidRemote(trimmed), [trimmed]);
@@ -60,6 +70,22 @@ export default function SettingsModal({
       .then((r) => alive && setDoctor(r))
       .catch((e) => alive && setError(errMsg(e)))
       .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [open]);
+
+  // Probe the GitHub keyring state on every modal open. We do this in a
+  // separate effect so a slow doctor() call doesn't block the disconnect
+  // button from appearing, and so the failure modes stay independent.
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    api
+      .githubIsLoggedIn()
+      .then((v) => alive && setGithubLoggedIn(v))
+      // Swallow errors and hide the button — see comment on the state decl.
+      .catch(() => alive && setGithubLoggedIn(false));
     return () => {
       alive = false;
     };
@@ -100,6 +126,23 @@ export default function SettingsModal({
     setEditing(false);
     setNewRemote("");
     setUpdateError(null);
+  };
+
+  const handleGithubLogout = async () => {
+    if (logoutBusy) return;
+    setLogoutBusy(true);
+    try {
+      await api.githubLogout();
+      setGithubLoggedIn(false);
+      toast.success(t("settings-modal.github-logout-success"));
+    } catch (err) {
+      // Surface as a toast rather than inline — the doctor report panel is the
+      // primary focus of this modal, and an inline error here would push it
+      // around. The user can always re-try; failure leaves the token intact.
+      toast.error(errMsg(err));
+    } finally {
+      setLogoutBusy(false);
+    }
   };
 
   const handleUpdate = async (e: React.FormEvent) => {
@@ -217,7 +260,7 @@ export default function SettingsModal({
             </form>
           )}
         </div>
-        <div className="px-4 py-3 border-t border-slate-700 flex items-center gap-2">
+        <div className="px-4 py-3 border-t border-slate-700 flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={handleStartEdit}
@@ -226,6 +269,16 @@ export default function SettingsModal({
           >
             {t("settings-modal.change-remote")}
           </button>
+          {githubLoggedIn && (
+            <button
+              type="button"
+              onClick={handleGithubLogout}
+              disabled={logoutBusy}
+              className="px-3 py-1.5 rounded-md bg-slate-700 hover:bg-slate-600 text-slate-100 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {t("settings-modal.github-logout")}
+            </button>
+          )}
           <label className="flex items-center gap-1.5 text-xs text-slate-400 ml-2">
             <span>{t("settings-modal.language")}</span>
             <select

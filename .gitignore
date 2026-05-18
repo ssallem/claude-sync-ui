@@ -28,5 +28,9 @@ dist-ssr
 src-tauri/target/
 src-tauri/gen/schemas/
 
+# Local env (GITHUB_CLIENT_ID etc.) — keep .env.example committed.
+.env
+.env.local
+
 # Claude Code per-project state (team-decisions, transcripts, etc.)
 .claude/

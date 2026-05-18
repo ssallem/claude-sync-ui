@@ -48,3 +48,41 @@ export interface DoctorResult {
   overall: DoctorOverall;
   checks: DoctorCheck[];
 }
+
+// ----------------------------------------------------------------------------
+// GitHub OAuth Device Flow (mirrors src-tauri/src/commands.rs B-2-1/B-2-2).
+//
+// Why three types? The Device Flow is a two-step dance: the backend asks GitHub
+// for a user_code (DeviceCodeResponse), the UI shows it, and the backend polls
+// until GitHub returns success/expired/denied (DevicePollResponse). Once auth
+// completes, a separate command creates the private repo (RepoCreateResponse).
+// All access tokens stay in the OS keyring on the Rust side — the frontend
+// never sees them.
+// ----------------------------------------------------------------------------
+
+export interface DeviceCodeResponse {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+}
+
+export type DevicePollStatus =
+  | "pending"
+  | "success"
+  | "slow_down"
+  | "expired"
+  | "denied";
+
+export interface DevicePollResponse {
+  status: DevicePollStatus;
+  // Only populated when status === "slow_down" — GitHub asked us to back off.
+  new_interval: number | null;
+}
+
+export interface RepoCreateResponse {
+  clone_url: string;
+  ssh_url: string;
+  full_name: string;
+}

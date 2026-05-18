@@ -7,6 +7,9 @@ import type {
   PushResult,
   PullResult,
   DoctorResult,
+  DeviceCodeResponse,
+  DevicePollResponse,
+  RepoCreateResponse,
 } from "../types";
 
 export const api = {
@@ -30,5 +33,42 @@ export const api = {
   // so we need a dedicated command to update the remote post-init.
   async setRemote(newUrl: string): Promise<void> {
     await invoke("set_remote", { newUrl });
+  },
+
+  // -----------------------------------------------------------------------
+  // GitHub OAuth Device Flow + repo creation (B-2-1 / B-2-2).
+  //
+  // Tauri serializes JS argument keys as camelCase → Rust snake_case, so
+  // `deviceCode` on the JS side maps to `device_code` in the Rust handler.
+  // The returned payload uses snake_case verbatim (no #[serde(rename_all)]
+  // on the Rust structs), matching the TS interfaces in `../types`.
+  //
+  // `githubCreateRepo` is wired now so callers exist for B-3-2 / B-2-2;
+  // the underlying Rust command lands in B-2-2. Calls before that will
+  // fail with "command not found" — that's expected during the rollout.
+  // -----------------------------------------------------------------------
+  async githubDeviceStart(): Promise<DeviceCodeResponse> {
+    return invoke("github_device_start");
+  },
+  async githubDevicePoll(
+    deviceCode: string,
+    currentInterval: number,
+  ): Promise<DevicePollResponse> {
+    return invoke("github_device_poll", { deviceCode, currentInterval });
+  },
+  async githubCreateRepo(
+    name: string,
+    description?: string,
+  ): Promise<RepoCreateResponse> {
+    return invoke("github_create_repo", {
+      name,
+      description: description ?? null,
+    });
+  },
+  async githubIsLoggedIn(): Promise<boolean> {
+    return invoke("github_is_logged_in");
+  },
+  async githubLogout(): Promise<void> {
+    await invoke("github_logout");
   },
 };

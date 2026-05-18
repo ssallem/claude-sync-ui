@@ -26,6 +26,123 @@ Candidates targeted for `v0.2`:
   `[remote "origin"]` form.
 - README — add a one-line note about the in-app Korean/English language toggle.
 
+OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
+
+- Allow cancel during in-flight `device_start` invoke — `InitScreen` currently
+  drops late `Esc` / back-button presses while the first GitHub round-trip is
+  still pending (W3).
+- Add next-action guidance after GitHub logout in the Settings modal so the
+  user knows the next step is "sign in again" rather than a bare empty state
+  (W4).
+- Rework `github.auth.enter-code-at` to split URL from label — the current
+  i18n key embeds the verification URL via `{url}` which leaves a stray
+  empty token in the rendered copy (S1).
+- Replace substring match with structured error code parsing in
+  `github::create_repo` — the Rust side currently scans the 422 body text
+  instead of using GitHub's `errors[].code` field (S2).
+- Extend `GitHubAuthFlow.test.tsx` for `slow_down` / `denied` / network paths
+  to round out the device-flow coverage matrix (S3).
+- Optional description field in `RepoCreator` so users can ship a one-liner
+  to GitHub alongside the name (S4).
+
+## [0.2.0] - 2026-05-19
+
+Major feature release. Adds GitHub Device Flow sign-in and automatic
+private repository creation directly from the InitScreen — first-time
+users can now go from "nothing" to a synced `~/.claude/` without leaving
+the app.
+
+### Added
+- **GitHub Device Flow sign-in** — InitScreen now offers a
+  "Sign in with GitHub" path alongside the existing manual URL form.
+  Triggers the standard OAuth Device Flow (RFC 8628): `user_code`
+  displayed in-app, browser auto-opens to
+  `https://github.com/login/device`, the Rust backend polls
+  `/login/oauth/access_token` until success with `slow_down` backoff
+  capped at 30 s. On success the access token lands in the **Windows
+  Credential Manager (DPAPI)** via the `keyring` crate — never on disk,
+  never in `~/.claude/` (which is itself synced).
+- **Automatic private repository creation** — once authenticated, the
+  user picks a repo name (default `dotclaude`) and `RepoCreator` posts
+  to `https://api.github.com/user/repos` with `private: true`. The
+  returned `clone_url` is wired straight into the existing `handleInit`
+  flow — no copy-paste, no detour through the GitHub website.
+- **`GitHubAuthFlow` component** — handles the Device Flow UI with
+  recursive `setTimeout` polling, 1 Hz countdown to `expires_in`,
+  Clipboard API "Copy code", and `tauri-plugin-opener` auto-launch of
+  the verification URL.
+- **`RepoCreator` component** — repo-name input with a client-side
+  empty/whitespace guard mirroring the Rust `validate_repo_name`
+  policy. Maps `not_logged_in` / 401 / 403 / 422 errors to localized
+  messages.
+- **`ManualRemoteForm` component** — the legacy URL input pulled out of
+  `InitScreen` so the screen stays focused on step orchestration.
+- **Settings — "Disconnect GitHub"** — Settings modal probes
+  `github_is_logged_in` on open and exposes a logout button when
+  applicable. Logout deletes the keyring entry.
+- **Five new Tauri commands** — `github_device_start`,
+  `github_device_poll`, `github_create_repo`, `github_is_logged_in`,
+  `github_logout` (with three new serde response types).
+- **Korean (한국어) translations** for the 31 new OAuth-related i18n
+  keys.
+
+### Changed
+- **`InitScreen` redesign** — turned into a 4-step state machine
+  (`choose` / `oauth-auth` / `oauth-repo` / `manual`) layering the OAuth
+  path on top of the existing manual form. Public Props signature is
+  unchanged so `App.test.tsx` integration tests still pass without
+  modification.
+
+### Security
+- **Token storage** — access tokens stored in Windows Credential
+  Manager (DPAPI), keyed `service="claude-sync-ui"` /
+  `account="github-token"`. Account-scoped (another Windows user on the
+  same machine cannot read the token). Loaded into Rust process memory
+  only for the duration of a single API call and dropped immediately
+  after.
+- **`client_id` configuration** — embedded at compile time via
+  `build.rs` reading `GITHUB_CLIENT_ID`, with a clearly fake
+  `MISSING_GITHUB_CLIENT_ID` placeholder for unconfigured builds and a
+  Cargo build warning that fires when the env var is unset.
+
+### Fixed (from the v0.2 critic review)
+- **Countdown-expiry race in `GitHubAuthFlow`** — an inflight
+  `device_poll` that resolved *after* the 15-minute countdown elapsed
+  could still fire `onSuccess` and incorrectly advance the flow.
+  `clearTimers()` in the expiry branch now also sets
+  `cancelledRef = true`.
+- **Controlled / uncontrolled `<input>` in `RepoCreator`** — the
+  repo-name field had both `value` and `defaultValue`, which triggers a
+  React 19 strict-mode console warning. Removed `defaultValue` (the
+  `useState("dotclaude")` initializer already supplies the same value).
+- **`new_interval === 0` falsy bug** — the `slow_down` branch in
+  `GitHubAuthFlow` used `&& result.new_interval` which fell through to
+  the pending path when GitHub returned `0`. Now uses an explicit
+  `!= null` check.
+
+### Dependencies (new)
+- `reqwest 0.12` (features: `json`, `native-tls`) — Device Flow + REST
+  API calls
+- `keyring 3` — Windows Credential Manager bindings
+
+### Test stats (since v0.1.3)
+- `cargo test`: 25 → **30 PASS** (+5: device-flow polling math,
+  `validate_repo_name` guard, 422 mapping)
+- `vitest`: 37 → **48 PASS** (+11: `GitHubAuthFlow` lifecycle,
+  `RepoCreator` validation + error paths, `InitScreen` step
+  transitions, countdown-race regression)
+- `cargo clippy --all-targets -- -D warnings`: clean
+- `tsc --noEmit`: clean
+- dist JS: 220.34 → 235.28 KB (+14.94 KB / gz 68.70 → 72.00 KB)
+
+### Setup (for self-hosters / forks)
+1. Register a GitHub OAuth App with **Device Flow enabled** at
+   <https://github.com/settings/developers>.
+2. Set `$env:GITHUB_CLIENT_ID = "Ov23li..."` before
+   `npm run tauri build`. The `MISSING_GITHUB_CLIENT_ID` placeholder
+   build still compiles but the Device Flow request will be rejected by
+   GitHub.
+
 ## [0.1.3] - 2026-05-19
 
 Security release. All Windows installers (`.msi` + `.exe`) and the bundled

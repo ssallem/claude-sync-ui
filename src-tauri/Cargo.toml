@@ -1,6 +1,6 @@
 [package]
 name = "claude-sync-ui"
-version = "0.2.1"
+version = "0.2.2"
 description = "Desktop GUI for claude-sync — sync ~/.claude across machines"
 authors = ["ssallem"]
 edition = "2021"

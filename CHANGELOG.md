@@ -45,6 +45,50 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 - Optional description field in `RepoCreator` so users can ship a one-liner
   to GitHub alongside the name (S4).
 
+## [0.2.2] - 2026-05-19
+
+Hotfix release. The v0.2.1 OAuth path created the private repo
+successfully on GitHub but then got stuck on the `RepoCreator` screen
+when the subsequent `claude-sync init` step failed (typically: git
+HTTPS push without configured credentials). No toast, no error, no
+step transition — just a silent dead-end.
+
+### Fixed
+- **`RepoCreator` no longer swallows `onSubmit` rejection** — the
+  `onCreated` callback now `await`s the parent's init promise inside
+  its try block and re-throws on rejection so the spinner stays
+  visible until the real outcome is known. `InitScreen` then catches
+  the rejection, transitions `step` back to `'choose'`, pre-fills
+  `ManualRemoteForm` with the just-created `clone_url`, and renders a
+  `role="status"` recovery hint above the form
+  (`init-screen.repo-created-init-failed`).
+- The underlying push failure is now surfaced through the normal
+  `ErrorBanner` channel as well, so the user can read the actual git
+  message (e.g. `"fatal: could not read Username for ..."`) instead
+  of guessing.
+
+### Added
+- New i18n keys `init-screen.repo-created-init-failed` (EN + KO)
+  with explicit guidance: "Repository was created on GitHub. Set up
+  git credentials or switch to the SSH URL, then click Initialize."
+- Regression test `InitScreen.test.tsx — surfaces init failure after
+  successful repo creation` reproduces the exact v0.2.1 stuck-screen
+  scenario.
+
+### Known limitation (deferred to v0.2.3)
+This release surfaces the failure but does **not** automatically wire
+the OAuth access token into Windows' `git credential-manager` for
+HTTPS pushes. Users who hit this path still need to either:
+1. Have a working `git credential-manager` (ships with Git for
+   Windows) — first push triggers GCM's own GitHub OAuth flow, OR
+2. Add an SSH key to GitHub and switch the pre-filled remote URL
+   from `https://...` to the `git@github.com:...` form before
+   clicking Initialize.
+
+v0.2.3 will add an opt-in toggle to mirror our OAuth token into
+`git credential-manager` so the HTTPS path "just works" after a
+single sign-in.
+
 ## [0.2.1] - 2026-05-19
 
 Hotfix release. The v0.2.0 GitHub Device Flow sign-in appeared to

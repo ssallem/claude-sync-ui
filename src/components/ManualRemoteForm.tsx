@@ -18,15 +18,25 @@ interface ManualRemoteFormProps {
   // We render it inline below the input so the user sees it next to the
   // field that caused it. Validation errors stay client-side.
   externalError?: string | null;
+  // Optional pre-filled remote URL. Used by InitScreen to recover the
+  // clone_url of a repo that was created on GitHub but failed local init —
+  // without this, the user would have no way to retry without leaving the
+  // app to look up the URL. Empty string ("") = no pre-fill (default).
+  initialRemote?: string;
 }
 
 export default function ManualRemoteForm({
   onSubmit,
   loading,
   externalError,
+  initialRemote = "",
 }: ManualRemoteFormProps) {
   const { t } = useTranslation();
-  const [remote, setRemote] = useState<string>("");
+  // Initial-state-only — we deliberately don't sync `initialRemote` changes
+  // mid-mount because the user might be editing the field, and overwriting
+  // their input would be hostile. The parent triggers a remount (key bump)
+  // on the rare case where it needs to force-overwrite.
+  const [remote, setRemote] = useState<string>(initialRemote);
   const trimmed = remote.trim();
   const valid = useMemo(() => isValidRemote(trimmed), [trimmed]);
   const disabled = loading || trimmed.length === 0 || !valid;

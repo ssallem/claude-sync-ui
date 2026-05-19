@@ -15,6 +15,15 @@
 //
 // Props stay byte-identical to the v0.1.x signature so App.tsx, App.test
 // and every other consumer keeps working without changes.
+//
+// v0.2.2: post-repo-create init can still fail (most commonly because git
+// HTTPS push needs credentials the user hasn't configured). When that
+// happens we *must* leave the 'oauth-repo' step or the user is stuck on
+// a screen that re-creating-the-same-repo would just fail with `repo_taken`.
+// We bounce back to 'choose' and pre-fill the manual form with the clone_url
+// the user just paid to create, so retry/recovery is one click away. The
+// inline `error` prop is already populated by App.tsx's setInitError, so the
+// failure surface renders for free via ManualRemoteForm.externalError.
 
 import { useState } from "react";
 import { useTranslation } from "../i18n";
@@ -37,6 +46,11 @@ export default function InitScreen({ onSubmit, loading, error }: InitScreenProps
   // inline, so we never set 'manual' explicitly — but the enum keeps the door
   // open without churning Props.
   const [step, setStep] = useState<Step>("choose");
+  // Holds the clone_url of a repo we successfully created on GitHub but
+  // failed to `init` against locally. We pass it down so ManualRemoteForm can
+  // pre-fill the input — without this, the user would have to leave the app,
+  // look up their newly-created repo, copy the URL, and paste it back.
+  const [pendingRemote, setPendingRemote] = useState<string>("");
 
   return (
     <div className="h-full flex items-center justify-center p-6 bg-slate-900 text-slate-100">
@@ -65,10 +79,23 @@ export default function InitScreen({ onSubmit, loading, error }: InitScreenProps
               <hr className="flex-grow border-slate-700" />
             </div>
 
+            {pendingRemote && (
+              // Distinct from a normal init-failure banner: tells the user
+              // *why* the form is pre-filled and what to do next. We surface
+              // this even when `error` is null (defense in depth — the inline
+              // error path already covers the failure detail).
+              <p
+                className="mb-3 text-xs text-amber-300 bg-amber-950/40 border border-amber-800/60 rounded-md px-3 py-2"
+                role="status"
+              >
+                {t("init-screen.repo-created-init-failed")}
+              </p>
+            )}
             <ManualRemoteForm
               onSubmit={onSubmit}
               loading={loading}
               externalError={error}
+              initialRemote={pendingRemote}
             />
           </>
         )}
@@ -86,11 +113,26 @@ export default function InitScreen({ onSubmit, loading, error }: InitScreenProps
 
         {step === "oauth-repo" && (
           <RepoCreator
-            onCreated={(cloneUrl) => {
+            onCreated={async (cloneUrl) => {
               // Hand the GitHub-generated URL straight to the existing init
-              // handler — App.tsx already runs `api.init(remote)` + refresh +
-              // success toast, so we don't duplicate any of that here.
-              void onSubmit(cloneUrl);
+              // handler — App.tsx runs `api.init(remote)` + refresh + success
+              // toast. On success the parent re-renders and this whole
+              // InitScreen unmounts (status flips to initialized).
+              //
+              // CRITICAL (v0.2.2): we *must* await + catch. Without this,
+              // an init failure (e.g. git HTTPS push without credentials)
+              // leaves the user on a RepoCreator screen with the same name
+              // already taken on GitHub — clicking Create again fails with
+              // `repo_taken` and the user is stuck. Bounce back to 'choose'
+              // and pre-fill the manual form with the URL we just paid to
+              // create so retry is one click away. App.tsx already set
+              // `initError`, which surfaces via ManualRemoteForm.externalError.
+              try {
+                await onSubmit(cloneUrl);
+              } catch {
+                setPendingRemote(cloneUrl);
+                setStep("choose");
+              }
             }}
             // Back out to the auth flow rather than 'choose' so a "wrong
             // account" recovery means re-running Device Flow, not retyping

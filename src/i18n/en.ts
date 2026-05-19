@@ -58,6 +58,11 @@ export const en: Dict = {
   "init-screen.submitting": "Initializing...",
   "init-screen.tip": "Make sure the remote already exists and you have push access.",
   "init-screen.or": "or",
+  // v0.2.2 — shown when OAuth created a repo but init failed (usually a git
+  // HTTPS credential problem). The clone_url is pre-filled below so retry
+  // takes one click after the user resolves the credential issue.
+  "init-screen.repo-created-init-failed":
+    "Your GitHub repository was created, but local init failed. The URL is pre-filled below — set up your Git credentials (or use SSH) and click Initialize to retry.",
 
   // SettingsModal
   "settings-modal.title": "Settings",

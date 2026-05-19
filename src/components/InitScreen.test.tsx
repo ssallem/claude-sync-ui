@@ -88,6 +88,94 @@ describe("InitScreen — stepper", () => {
     }
   });
 
+  it(
+    "v0.2.2 regression: when onSubmit rejects after repo creation, " +
+      "step falls back to 'choose' with the clone_url pre-filled and the " +
+      "error surfaced inline (otherwise user is stuck on RepoCreator)",
+    async () => {
+      // Simulate the exact v0.2.1 failure: GitHub repo creation succeeds,
+      // then `api.init(cloneUrl)` fails (e.g. git HTTPS push without
+      // credentials). Before the fix, step stayed at 'oauth-repo' with no
+      // error visible and re-creating the same name would now fail with
+      // `repo_taken`.
+      mapResponses({
+        github_device_start: async () => baseDeviceCode,
+        github_device_poll: async () => ({ status: "success", new_interval: null }),
+        github_create_repo: async () => ({
+          clone_url: "https://github.com/me/dotclaude.git",
+          ssh_url: "git@github.com:me/dotclaude.git",
+          full_name: "me/dotclaude",
+        }),
+      });
+
+      const initError = "fatal: could not read Username for 'https://github.com'";
+      const onSubmit = vi.fn(async () => {
+        throw new Error(initError);
+      });
+
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        // Render with an explicit `error` prop the way App.tsx will after
+        // the rejection (App.tsx's catch sets initError → re-renders InitScreen
+        // with error=initError). We can't observe App.tsx's state from here,
+        // so we pass the prop directly to assert the surface behavior.
+        const { rerender } = renderInit(
+          <InitScreen onSubmit={onSubmit} loading={false} error={null} />,
+        );
+
+        await act(async () => {
+          screen.getByRole("button", { name: /Sign in with GitHub/i }).click();
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync((baseDeviceCode.interval + 1) * 1000);
+        });
+        await waitFor(() => {
+          expect(
+            screen.getByRole("button", { name: /Create private repository/i }),
+          ).toBeInTheDocument();
+        });
+
+        // Click Create. RepoCreator → onCreated(cloneUrl) → onSubmit throws.
+        // InitScreen's catch should bounce step back to 'choose'.
+        await act(async () => {
+          screen.getByRole("button", { name: /Create private repository/i }).click();
+        });
+
+        await waitFor(() => {
+          expect(onSubmit).toHaveBeenCalledWith("https://github.com/me/dotclaude.git");
+        });
+
+        // Re-render with the error prop the parent would now have set, to
+        // exercise the externalError display path.
+        rerender(
+          <LanguageProvider initialLang="en">
+            <InitScreen onSubmit={onSubmit} loading={false} error={initError} />
+          </LanguageProvider>,
+        );
+
+        // We're back on the 'choose' step — the OAuth shortcut button and the
+        // Remote URL input are both visible again.
+        await waitFor(() => {
+          expect(
+            screen.getByRole("button", { name: /Sign in with GitHub/i }),
+          ).toBeInTheDocument();
+        });
+        const input = screen.getByLabelText(/Remote URL/i) as HTMLInputElement;
+        expect(input).toBeInTheDocument();
+        // Clone URL is pre-filled so retry is one click away.
+        expect(input.value).toBe("https://github.com/me/dotclaude.git");
+        // The init error is surfaced inline via ManualRemoteForm.externalError.
+        expect(screen.getByRole("alert")).toHaveTextContent(initError);
+        // The recovery hint is shown so the user knows what just happened.
+        expect(screen.getByRole("status")).toHaveTextContent(
+          /GitHub repository was created/i,
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("routes RepoCreator.onCreated → onSubmit(cloneUrl)", async () => {
     // We drive the OAuth path end-to-end by simulating a 'success' on the
     // first poll — that advances the stepper to 'oauth-repo' without us

@@ -24,8 +24,13 @@ import { useTranslation } from "../i18n";
 
 interface RepoCreatorProps {
   // Called with the GitHub-returned clone URL (https://) on success.
-  // Parent typically passes this straight to `api.init(remote)`.
-  onCreated: (cloneUrl: string) => void;
+  // Parent typically passes this straight to `api.init(remote)`. Async
+  // return so the parent can throw on a follow-up failure (e.g. `init`
+  // rejects because git can't push HTTPS without credentials) — we await
+  // it here so the "Creating..." spinner stays visible until the whole
+  // create+init pipeline either succeeds (this component unmounts as the
+  // parent renders the main app) or fails (parent transitions us away).
+  onCreated: (cloneUrl: string) => void | Promise<void>;
   // Called when the user backs out of this step. Parent decides whether
   // that means "back to choose" or "back to the auth flow".
   onBack: () => void;
@@ -74,7 +79,14 @@ export default function RepoCreator({ onCreated, onBack }: RepoCreatorProps) {
       setErrorDetail(null);
       try {
         const result = await api.githubCreateRepo(trimmed);
-        onCreated(result.clone_url);
+        // Await so the spinner stays visible while the parent runs init.
+        // The parent (InitScreen) handles post-create failures by
+        // transitioning state — it must NOT re-throw, because any error
+        // that escapes here would be misclassified by `mapErrorKey` as a
+        // GitHub network error even though the repo was created cleanly.
+        // We trust the parent's contract: resolve = success, reject = it
+        // already handled the failure and changed step out from under us.
+        await onCreated(result.clone_url);
       } catch (err) {
         const raw = errMsg(err);
         setErrorKey(mapErrorKey(raw));

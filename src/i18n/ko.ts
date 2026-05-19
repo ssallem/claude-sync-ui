@@ -55,6 +55,11 @@ export const ko: Dict = {
   "init-screen.submitting": "초기화 중...",
   "init-screen.tip": "원격 저장소가 미리 존재하고 push 권한이 있어야 합니다.",
   "init-screen.or": "또는",
+  // v0.2.2 — OAuth로 저장소는 만들었지만 로컬 init이 실패한 경우 (대부분 git
+  // HTTPS 자격 증명 문제) 표시. URL은 아래에 미리 입력되어 있어 자격 증명을
+  // 설정한 뒤 초기화 버튼만 누르면 재시도된다.
+  "init-screen.repo-created-init-failed":
+    "GitHub 저장소는 생성되었지만 로컬 초기화에 실패했습니다. 아래에 URL이 미리 입력되어 있습니다 — Git 자격 증명을 설정하거나 (또는 SSH 사용) 초기화 버튼을 눌러 다시 시도하세요.",
 
   // SettingsModal
   "settings-modal.title": "설정",

@@ -45,6 +45,45 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 - Optional description field in `RepoCreator` so users can ship a one-liner
   to GitHub alongside the name (S4).
 
+## [0.2.1] - 2026-05-19
+
+Hotfix release. The v0.2.0 GitHub Device Flow sign-in appeared to
+succeed but the access token was silently dropped on the way to the
+Windows Credential Manager, so the very next step ("Create private
+repository") immediately reported "Please sign in to GitHub first."
+
+### Fixed
+- **GitHub access token now actually persists on Windows** — root
+  cause was a missing per-platform backend feature on the `keyring`
+  crate. `keyring = "3"` with no features compiles into a no-op
+  store: `set_password` returns `Ok(())` while the credential vault
+  is never touched. `Cargo.toml` now activates `windows-native` on
+  Windows, `apple-native` on macOS, and `linux-native-sync-persistent
+  + crypto-rust` on Linux via `[target.'cfg(...)'.dependencies]`
+  blocks so the OS-native backend is always compiled in.
+- **`poll_device_flow` save round-trip verification** — after
+  `save_token()` returns, `github.rs` now immediately calls
+  `load_token()` and compares the result to the freshly issued
+  access token. A mismatch (or a load failure right after a
+  successful save) is surfaced as `keyring_save_failed` /
+  `keyring_round_trip_failed` / `keyring_round_trip_mismatch`
+  instead of silently letting `status="success"` propagate to the
+  UI. Same-shape regression of the v0.2.0 bug will now fail loudly
+  at the first sign-in attempt.
+
+### Added
+- Two new `cargo test` cases exercising the **real OS keyring
+  backend** — `save_load_round_trip_persists_token` and
+  `delete_then_load_returns_not_logged_in`. Tests use unique
+  `claude-sync-ui-test-{suffix}-{pid}-{nanos}` service names and
+  always clean up so user credentials are never touched. `cargo
+  test`: 30 → 32 PASS.
+
+### Setup (unchanged from v0.2.0)
+Self-hosters / forks: `$env:GITHUB_CLIENT_ID = "Ov23li..."` before
+`npm run tauri build`. The placeholder build still compiles but the
+Device Flow request is rejected by GitHub at runtime.
+
 ## [0.2.0] - 2026-05-19
 
 Major feature release. Adds GitHub Device Flow sign-in and automatic

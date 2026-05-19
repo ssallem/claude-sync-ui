@@ -180,7 +180,22 @@ pub async fn poll_device_flow(
 
     match parsed {
         GitHubTokenResponse::Success { access_token, .. } => {
-            save_token(&access_token)?;
+            // Persist to the OS credential store. v0.2.0 regression: this
+            // call appeared to succeed even when the keyring crate was
+            // compiled without a native backend, so we add an explicit
+            // round-trip check below to surface that class of bug to the FE
+            // instead of letting the user land on "logged in but token gone".
+            save_token(&access_token)
+                .map_err(|e| format!("keyring_save_failed: {}", e))?;
+            // Defense in depth: read back what we just wrote. If this fails
+            // we never tell the FE the login succeeded — it stays on the
+            // login screen and shows a real error string rather than the
+            // misleading "먼저 GitHub에 로그인해주세요" two screens later.
+            let round_trip = load_token()
+                .map_err(|e| format!("keyring_round_trip_failed: {}", e))?;
+            if round_trip != access_token {
+                return Err("keyring_round_trip_mismatch".to_string());
+            }
             Ok(DevicePollResponse {
                 status: "success".to_string(),
                 new_interval: None,
@@ -211,16 +226,20 @@ pub async fn poll_device_flow(
     }
 }
 
-pub fn save_token(token: &str) -> Result<(), String> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+// Internal helpers parameterised by service+account so tests can exercise
+// the real OS credential store with a unique key (avoiding clashes with
+// the user's actual login state). The public functions just bind to the
+// app-wide constants.
+fn save_token_at(service: &str, account: &str, token: &str) -> Result<(), String> {
+    let entry = keyring::Entry::new(service, account)
         .map_err(|e| format!("keyring entry: {}", e))?;
     entry
         .set_password(token)
         .map_err(|e| format!("keyring set: {}", e))
 }
 
-pub fn load_token() -> Result<String, String> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+fn load_token_at(service: &str, account: &str) -> Result<String, String> {
+    let entry = keyring::Entry::new(service, account)
         .map_err(|e| format!("keyring entry: {}", e))?;
     entry.get_password().map_err(|e| match e {
         keyring::Error::NoEntry => "not_logged_in".to_string(),
@@ -228,8 +247,8 @@ pub fn load_token() -> Result<String, String> {
     })
 }
 
-pub fn delete_token() -> Result<(), String> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+fn delete_token_at(service: &str, account: &str) -> Result<(), String> {
+    let entry = keyring::Entry::new(service, account)
         .map_err(|e| format!("keyring entry: {}", e))?;
     match entry.delete_credential() {
         Ok(()) => Ok(()),
@@ -237,6 +256,18 @@ pub fn delete_token() -> Result<(), String> {
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(format!("keyring delete: {}", e)),
     }
+}
+
+pub fn save_token(token: &str) -> Result<(), String> {
+    save_token_at(KEYRING_SERVICE, KEYRING_ACCOUNT, token)
+}
+
+pub fn load_token() -> Result<String, String> {
+    load_token_at(KEYRING_SERVICE, KEYRING_ACCOUNT)
+}
+
+pub fn delete_token() -> Result<(), String> {
+    delete_token_at(KEYRING_SERVICE, KEYRING_ACCOUNT)
 }
 
 pub fn has_token() -> bool {
@@ -386,5 +417,65 @@ mod tests {
         assert!(validate_repo_name("dot-claude").is_ok());
         assert!(validate_repo_name("dot.claude").is_ok());
         assert!(validate_repo_name("claude_sync_backup_2026").is_ok());
+    }
+
+    // Per-test unique service name so concurrent test runs and the user's
+    // real "claude-sync-ui / github-token" entry can never collide.
+    fn unique_test_service(suffix: &str) -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        format!(
+            "claude-sync-ui-test-{}-{}-{}",
+            suffix,
+            std::process::id(),
+            nanos
+        )
+    }
+
+    // Regression coverage for the v0.2.0 hotfix: the keyring crate was added
+    // without enabling a platform backend feature, so set_password returned Ok
+    // but persisted nothing. This test would have caught that — write a token,
+    // read it back, and assert the same bytes survive the round-trip. If the
+    // backend is a no-op the load returns "not_logged_in" and the test fails.
+    #[test]
+    fn save_load_round_trip_persists_token() {
+        let service = unique_test_service("roundtrip");
+        let account = "test-account";
+        let token = "ghu_test_token_round_trip_dummy_value";
+
+        // Clean state in case a previous failing run left an entry behind.
+        let _ = delete_token_at(&service, account);
+
+        save_token_at(&service, account, token).expect("save_token_at should succeed");
+        let loaded = load_token_at(&service, account).expect("load_token_at should succeed");
+        assert_eq!(loaded, token, "round-trip must preserve token bytes");
+
+        // Always clean up so we don't pollute the user's credential store.
+        delete_token_at(&service, account).expect("delete_token_at should succeed");
+    }
+
+    // After delete the credential must be absent — surfaced as the stable
+    // "not_logged_in" string the FE switches on. Catches a regression where
+    // delete_credential silently fails to remove the entry.
+    #[test]
+    fn delete_then_load_returns_not_logged_in() {
+        let service = unique_test_service("delete");
+        let account = "test-account";
+        let token = "ghu_test_token_for_delete";
+
+        let _ = delete_token_at(&service, account);
+        save_token_at(&service, account, token).expect("save_token_at should succeed");
+        delete_token_at(&service, account).expect("delete_token_at should succeed");
+
+        match load_token_at(&service, account) {
+            Err(e) => assert_eq!(e, "not_logged_in"),
+            Ok(v) => panic!("expected NoEntry after delete, got token: {:?}", v),
+        }
+
+        // delete is idempotent — a second delete on an already-absent entry
+        // must still return Ok so the UI's logout button is safe to spam.
+        delete_token_at(&service, account).expect("idempotent delete should succeed");
     }
 }

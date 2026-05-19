@@ -35,11 +35,21 @@ interface InitScreenProps {
   onSubmit: (remote: string) => Promise<void>;
   loading: boolean;
   error: string | null;
+  // v0.2.3 hotfix — propagated to ManualRemoteForm so the secret-scan
+  // recovery action is reachable directly from the init failure surface
+  // (the actual dogfood scenario). Optional to keep prop-compat with
+  // existing call sites and tests that don't need recovery wiring.
+  onCreateStowignore?: () => void | Promise<void>;
 }
 
 type Step = "choose" | "oauth-auth" | "oauth-repo" | "manual";
 
-export default function InitScreen({ onSubmit, loading, error }: InitScreenProps) {
+export default function InitScreen({
+  onSubmit,
+  loading,
+  error,
+  onCreateStowignore,
+}: InitScreenProps) {
   const { t } = useTranslation();
   // 'manual' is reserved for a possible future "fold the form out of view by
   // default" variant. The current 'choose' UI already shows the manual form
@@ -96,6 +106,7 @@ export default function InitScreen({ onSubmit, loading, error }: InitScreenProps
               loading={loading}
               externalError={error}
               initialRemote={pendingRemote}
+              onCreateStowignore={onCreateStowignore}
             />
           </>
         )}

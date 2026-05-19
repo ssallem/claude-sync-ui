@@ -10,6 +10,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "../i18n";
 import { isValidRemote } from "../lib/remote-validation";
+import ErrorBanner from "./ErrorBanner";
 
 interface ManualRemoteFormProps {
   onSubmit: (remote: string) => void | Promise<void>;
@@ -23,6 +24,12 @@ interface ManualRemoteFormProps {
   // without this, the user would have no way to retry without leaving the
   // app to look up the URL. Empty string ("") = no pre-fill (default).
   initialRemote?: string;
+  // v0.2.3 hotfix — threaded through from App.tsx so the user can recover
+  // from a sidecar secret-scan refusal without leaving the init screen.
+  // ErrorBanner pattern-matches the message body and only renders the
+  // action button on a confirmed secret-scan refusal, so it's safe to
+  // always pass this when available.
+  onCreateStowignore?: () => void | Promise<void>;
 }
 
 export default function ManualRemoteForm({
@@ -30,6 +37,7 @@ export default function ManualRemoteForm({
   loading,
   externalError,
   initialRemote = "",
+  onCreateStowignore,
 }: ManualRemoteFormProps) {
   const { t } = useTranslation();
   // Initial-state-only — we deliberately don't sync `initialRemote` changes
@@ -68,9 +76,18 @@ export default function ManualRemoteForm({
         <p className="mt-1 text-xs text-yellow-400">{t("init-screen.invalid")}</p>
       )}
       {externalError && (
-        <p className="mt-2 text-sm text-red-400 break-words" role="alert">
-          {externalError}
-        </p>
+        // v0.2.3 hotfix — externalError used to render as a single <p> that
+        // would balloon to fill the screen when claude-sync's secret-scan
+        // emitted its multi-kB refusal payload. ErrorBanner caps height,
+        // folds long messages, and (on detected secret-scan refusals)
+        // surfaces a one-click recovery action. No onDismiss — the parent
+        // owns the error lifecycle here; it'll clear on the next submit.
+        <div className="mt-2">
+          <ErrorBanner
+            message={externalError}
+            onCreateStowignore={onCreateStowignore}
+          />
+        </div>
       )}
       <button
         type="submit"

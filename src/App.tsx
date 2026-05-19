@@ -73,6 +73,32 @@ function App() {
     void refresh();
   }, [refresh]);
 
+  // v0.2.3 hotfix — secret-scan recovery. When claude-sync's init refuses
+  // with a "Refusing to initialize: found N potential secret(s)" payload,
+  // ErrorBanner surfaces a "Create .stowignore" action. This handler writes
+  // the recommended default file via the new Tauri command, surfaces the
+  // result as a toast (success → user clicks Initialize again; already-exists
+  // → tell them to hand-edit), dismisses the banner, and refreshes status so
+  // the InitScreen path can re-evaluate without a full app reload.
+  const handleCreateStowignore = useCallback(async () => {
+    try {
+      await api.createDefaultStowignore();
+      toast.success(t("error-banner.stowignore-success"));
+      setErrorDismissed(true);
+      await refresh();
+    } catch (e) {
+      const m = errMsg(e);
+      // Surface the well-known sentinel as a friendly i18n message; anything
+      // else (write failures, missing claude_dir) we surface verbatim so the
+      // user can copy/paste to a bug report instead of seeing a black box.
+      if (m === "stowignore_exists") {
+        toast.info(t("error-banner.stowignore-exists"));
+      } else {
+        toast.error(t("app.action-failed", { action: "stowignore", message: m }));
+      }
+    }
+  }, [toast, t, refresh]);
+
   const handleInit = useCallback(async (remote: string) => {
     setInitLoading(true); setInitError(null);
     try {
@@ -89,7 +115,12 @@ function App() {
       <div className="h-screen flex flex-col bg-slate-900 text-slate-100">
         <Header onSettings={handleSettings} onRefresh={handleRefresh} />
         <div className="flex-1 overflow-auto">
-          <InitScreen onSubmit={handleInit} loading={initLoading} error={initError} />
+          <InitScreen
+            onSubmit={handleInit}
+            loading={initLoading}
+            error={initError}
+            onCreateStowignore={handleCreateStowignore}
+          />
         </div>
         <SettingsModal
           open={settingsOpen}
@@ -104,7 +135,13 @@ function App() {
   return (
     <div className="h-screen flex flex-col bg-slate-900 text-slate-100">
       <Header onSettings={handleSettings} onRefresh={handleRefresh} />
-      {visibleError && <ErrorBanner message={visibleError} onDismiss={() => setErrorDismissed(true)} />}
+      {visibleError && (
+        <ErrorBanner
+          message={visibleError}
+          onDismiss={() => setErrorDismissed(true)}
+          onCreateStowignore={handleCreateStowignore}
+        />
+      )}
       <RemoteBar remote={remoteUrl} lastSyncAgo={lastSyncLabel} onChange={handleSettings} />
       <main className="flex-1 overflow-auto bg-slate-900">
         <FileTree

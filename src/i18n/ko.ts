@@ -82,6 +82,14 @@ export const ko: Dict = {
   // ErrorBanner
   "error-banner.label": "오류",
   "error-banner.dismiss": "닫기",
+  "error-banner.dismiss-aria": "오류 닫기",
+  "error-banner.show-more": "전체 보기",
+  "error-banner.show-less": "접기",
+  "error-banner.create-stowignore": ".stowignore 생성",
+  "error-banner.stowignore-success":
+    "기본 .stowignore가 생성되었습니다. 다시 초기화하세요.",
+  "error-banner.stowignore-exists":
+    ".stowignore가 이미 존재합니다. 수동으로 편집하세요.",
 
   // Toast
   "toast.dismiss-aria": "닫기",

@@ -14,6 +14,7 @@ pub fn run() {
             commands::pull,
             commands::doctor,
             commands::set_remote,
+            commands::create_default_stowignore,
             commands::github_device_start,
             commands::github_device_poll,
             commands::github_is_logged_in,

@@ -85,6 +85,14 @@ export const en: Dict = {
   // ErrorBanner
   "error-banner.label": "Error",
   "error-banner.dismiss": "Dismiss",
+  "error-banner.dismiss-aria": "Dismiss error",
+  "error-banner.show-more": "Show full message",
+  "error-banner.show-less": "Show less",
+  "error-banner.create-stowignore": "Create .stowignore",
+  "error-banner.stowignore-success":
+    "Default .stowignore created. Try Initialize again.",
+  "error-banner.stowignore-exists":
+    ".stowignore already exists. Edit it manually.",
 
   // Toast
   "toast.dismiss-aria": "Dismiss",

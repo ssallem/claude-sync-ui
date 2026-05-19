@@ -45,6 +45,52 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 - Optional description field in `RepoCreator` so users can ship a one-liner
   to GitHub alongside the name (S4).
 
+## [0.2.3] - 2026-05-19
+
+Hotfix release. The v0.2.2 manual-init path correctly surfaced the
+underlying error after a successful repo creation, but when
+`claude-sync init` was refused by the upstream secret scanner with a
+40+ line list of detected API keys, the error message visually
+swallowed the entire `ManualRemoteForm` screen and the dismiss
+affordance was unreachable on top of the rendered text — leaving the
+user with no path out except force-quitting the app.
+
+### Fixed
+- **ErrorBanner — long messages no longer drown the screen.** Messages
+  longer than 200 chars or 3+ lines are now truncated to a 2-line
+  preview with an `aria-expanded` "Show full message / Show less"
+  toggle. The dismiss control (`✕`) sits in a fixed 40×40 hit target
+  at the top-right corner and is always reachable; even a fully
+  expanded message is capped at `max-h-[40vh]` with `overflow-y-auto`
+  so the action row stays visible.
+- **`ManualRemoteForm` now uses `ErrorBanner` for external errors**
+  instead of a raw `<p>` so the same collapsing rules apply on the
+  init-failed path (which is where v0.2.2 dogfooders actually got
+  trapped — not on the live `ErrorBanner` channel).
+
+### Added
+- **One-click `.stowignore` recovery.** When the error matches the
+  upstream secret-scan signature (`"Refusing to initialize: found"`
+  / `"potential secret(s)"`), an amber "Create .stowignore" action
+  button appears next to the toggle. Clicking it invokes the new
+  Tauri command `create_default_stowignore` which atomically writes
+  a curated `~/.claude/.stowignore` (credentials, history.jsonl,
+  file-history/, daemon runtime, marketplace example docs) so the
+  user can immediately re-run Initialize without leaving the app.
+  Existing `.stowignore` files are never overwritten — the command
+  returns `stowignore_exists` and the UI surfaces a localized hint.
+- **Three new `cargo test` cases** exercising the stowignore writer
+  with real per-thread temp directories: happy path, existing-file
+  guard, and missing-directory guard.
+
+### Tests
+- `cargo test`: 32 → **35 PASS** (+3 stowignore unit tests)
+- `vitest`: 49 → **62 PASS** (+13 across `ErrorBanner.test.tsx` —
+  short/long collapsing, secret-scan heuristic with 6 fixtures,
+  recovery action callback, dismiss reachability)
+- `cargo clippy --all-targets -D warnings`: clean
+- `tsc --noEmit`: clean
+
 ## [0.2.2] - 2026-05-19
 
 Hotfix release. The v0.2.1 OAuth path created the private repo

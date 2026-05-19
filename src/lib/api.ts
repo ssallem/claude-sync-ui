@@ -35,6 +35,16 @@ export const api = {
     await invoke("set_remote", { newUrl });
   },
 
+  // v0.2.3 hotfix — write a recommended `~/.claude/.stowignore` when the
+  // sidecar's secret-scan blocks first-run init. Stable Err strings the
+  // ErrorBanner can pattern-match for user-facing messaging:
+  //   - "stowignore_exists"     → file already present, do not overwrite
+  //   - "claude_dir_not_found"  → ~/.claude/ missing on disk
+  // Any other Err is a write failure that's surfaced verbatim.
+  async createDefaultStowignore(): Promise<void> {
+    await invoke("create_default_stowignore");
+  },
+
   // -----------------------------------------------------------------------
   // GitHub OAuth Device Flow + repo creation (B-2-1 / B-2-2).
   //

@@ -9,6 +9,10 @@ export const ko: Dict = {
   // Header
   "header.settings": "설정",
   "header.refresh": "새로고침",
+  // v0.2.8 — Header에 노출된 별도 GitHub 로그아웃 진입점. SettingsModal의
+  // "GitHub 계정 연결 해제"는 유지하되, dogfood에서 사용자가 못 찾았다.
+  "header.github-logout": "로그아웃",
+  "header.github-logout-success": "GitHub 로그아웃 되었습니다.",
 
   // RemoteBar
   "remote-bar.remote-label": "원격:",

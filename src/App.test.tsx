@@ -58,6 +58,7 @@ describe("App (integration)", () => {
       status: async () => {
         throw "Not initialized — run `claude-sync init <remote>` first.";
       },
+      github_is_logged_in: async () => false,
     });
 
     renderApp();
@@ -78,6 +79,7 @@ describe("App (integration)", () => {
       status: async () => {
         throw "Not initialized. Run `claude-sync init <remote>` first.";
       },
+      github_is_logged_in: async () => false,
     });
 
     renderApp();
@@ -94,6 +96,7 @@ describe("App (integration)", () => {
       status: async () => {
         throw "fatal: not a git repository (or any of the parent directories): .git";
       },
+      github_is_logged_in: async () => false,
     });
 
     renderApp();
@@ -107,6 +110,7 @@ describe("App (integration)", () => {
     mapResponses({
       status: async () => okStatus,
       doctor: async () => okDoctor,
+      github_is_logged_in: async () => false,
     });
 
     renderApp();
@@ -127,6 +131,7 @@ describe("App (integration)", () => {
       status: async () => okStatus,
       doctor: async () => okDoctor,
       push: async () => ({ pushed: 1, commit_sha: "abc1234", message: null, nothing_to_push: false }),
+      github_is_logged_in: async () => false,
     });
 
     renderApp();
@@ -154,6 +159,7 @@ describe("App (integration)", () => {
       push: async () => {
         throw "push_unverified: sidecar reported success but origin is still 1 commit(s) behind";
       },
+      github_is_logged_in: async () => false,
     });
 
     renderApp();
@@ -183,6 +189,7 @@ describe("App (integration)", () => {
         message: "sync",
         nothing_to_push: false,
       }),
+      github_is_logged_in: async () => false,
     });
 
     renderApp();
@@ -205,6 +212,7 @@ describe("App (integration)", () => {
       push: async () => {
         throw "push_unverified: sidecar reported success but origin is still 1 commit(s) behind";
       },
+      github_is_logged_in: async () => false,
     });
 
     renderApp();
@@ -231,6 +239,7 @@ describe("App (integration)", () => {
         message: "sync",
         nothing_to_push: false,
       }),
+      github_is_logged_in: async () => false,
     });
 
     renderApp();

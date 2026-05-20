@@ -12,6 +12,11 @@ export const en: Dict = {
   // Header
   "header.settings": "Settings",
   "header.refresh": "Refresh",
+  // v0.2.8 — prominent GitHub logout entry point in the top bar; the existing
+  // "Disconnect GitHub" inside the Settings modal stays but users couldn't
+  // find it in dogfood.
+  "header.github-logout": "Sign out",
+  "header.github-logout-success": "Signed out of GitHub.",
 
   // RemoteBar
   "remote-bar.remote-label": "Remote:",

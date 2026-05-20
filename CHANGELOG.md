@@ -45,6 +45,30 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 - Optional description field in `RepoCreator` so users can ship a one-liner
   to GitHub alongside the name (S4).
 
+## [0.2.8] - 2026-05-20
+
+Hotfix: surfaced GitHub logout as a prominent entry point in the app header.
+
+### Added
+- **Header "Sign out" button.** When a GitHub account is connected, an
+  amber-coloured "Sign out" button now appears in the top bar next to the
+  Settings/Refresh buttons. Previously the only way to disconnect was the
+  buried "Disconnect GitHub" entry inside the Settings modal — users
+  couldn't find it (v0.2.7 dogfood report).
+- `header.github-logout` / `header.github-logout-success` i18n keys (en + ko).
+- `Header.test.tsx` with three vitest cases: login state shows the button,
+  logout state hides it, click invokes `github_logout` and shows a success
+  toast.
+
+### Notes
+- The existing "Disconnect GitHub" entry in the Settings modal is retained
+  for completeness; both entry points call the same `github_logout` Tauri
+  command. Logout-related state in the two components is independent —
+  SettingsModal re-checks `githubIsLoggedIn` on every open.
+- App.test.tsx fixtures updated to mock `github_is_logged_in: false` so the
+  newly-added Header mount-time check doesn't trip "no route registered"
+  on the integration tests.
+
 ## [0.2.7] - 2026-05-20
 
 Second hotfix on top of v0.2.6. The v0.2.6 verification (sidecar status

@@ -45,6 +45,14 @@ export const api = {
     await invoke("create_default_stowignore");
   },
 
+  // v0.2.9 — smart variant: detectedPaths가 빈 배열이면 DEFAULT_STOWIGNORE만,
+  // 1개 이상이면 DEFAULT + "# Auto-detected from secret-scan" 섹션 append.
+  // Stable Err strings (commands.rs::create_smart_stowignore):
+  //   "stowignore_exists" / "claude_dir_not_found" / "path_outside_claude_dir"
+  async createSmartStowignore(detectedPaths: string[]): Promise<void> {
+    await invoke("create_smart_stowignore", { detectedPaths });
+  },
+
   // v0.2.4 — read ~/.claude/.stowignore for the inspector modal. Returns
   // "" when the file does not exist (treated as "no exclusions configured")
   // rather than throwing — the UI shows an empty-state message instead.

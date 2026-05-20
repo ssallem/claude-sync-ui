@@ -16,6 +16,7 @@ import { useRemoteUrl } from "./hooks/useRemoteUrl";
 import { useToast } from "./components/Toast";
 import { api } from "./lib/api";
 import { formatAgo } from "./lib/format";
+import { parseSecretScanPaths } from "./lib/stowignore";
 import { useTranslation } from "./i18n";
 import type { ChangeEntry } from "./types";
 
@@ -103,23 +104,33 @@ function App() {
   // → tell them to hand-edit), dismisses the banner, and refreshes status so
   // the InitScreen path can re-evaluate without a full app reload.
   const handleCreateStowignore = useCallback(async () => {
+    // v0.2.9 — parse the relevant error (init-time vs status-time) for absolute
+    // paths the sidecar reported as containing secrets, and ask Rust to append
+    // them to the .stowignore body alongside the default patterns.
+    const sourceError = initError ?? visibleError ?? "";
+    const detectedPaths = parseSecretScanPaths(sourceError);
     try {
-      await api.createDefaultStowignore();
-      toast.success(t("error-banner.stowignore-success"));
+      await api.createSmartStowignore(detectedPaths);
+      if (detectedPaths.length > 0) {
+        toast.success(
+          t("error-banner.smart-stowignore-success", { n: detectedPaths.length }),
+        );
+      } else {
+        toast.success(t("error-banner.stowignore-success"));
+      }
       setErrorDismissed(true);
       await refresh();
     } catch (e) {
       const m = errMsg(e);
-      // Surface the well-known sentinel as a friendly i18n message; anything
-      // else (write failures, missing claude_dir) we surface verbatim so the
-      // user can copy/paste to a bug report instead of seeing a black box.
       if (m === "stowignore_exists") {
         toast.info(t("error-banner.stowignore-exists"));
+      } else if (m === "path_outside_claude_dir") {
+        toast.error(t("error-banner.path-outside-claude-dir"));
       } else {
         toast.error(t("app.action-failed", { action: "stowignore", message: m }));
       }
     }
-  }, [toast, t, refresh]);
+  }, [initError, visibleError, toast, t, refresh]);
 
   // v0.2.5 — double-clicking a FileTree row asks the sidecar to open the
   // file in the OS default editor. Stable Err strings come back from the

@@ -15,6 +15,7 @@ pub fn run() {
             commands::doctor,
             commands::set_remote,
             commands::create_default_stowignore,
+            commands::create_smart_stowignore,
             commands::read_stowignore,
             commands::github_device_start,
             commands::github_device_poll,

@@ -107,6 +107,10 @@ export const ko: Dict = {
   "error-banner.create-stowignore": ".stowignore 생성",
   "error-banner.stowignore-success":
     "기본 .stowignore가 생성되었습니다. 다시 초기화하세요.",
+  "error-banner.smart-stowignore-success":
+    "{n}개 감지된 경로가 포함된 스마트 .stowignore가 생성되었습니다. 다시 초기화하세요.",
+  "error-banner.path-outside-claude-dir":
+    ".stowignore를 생성할 수 없습니다: 감지된 경로 중 ~/.claude/ 외부 경로가 있습니다. 파일을 직접 편집하세요.",
   "error-banner.stowignore-exists":
     ".stowignore가 이미 존재합니다. 수동으로 편집하세요.",
 

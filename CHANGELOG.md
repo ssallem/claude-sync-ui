@@ -45,6 +45,53 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 - Optional description field in `RepoCreator` so users can ship a one-liner
   to GitHub alongside the name (S4).
 
+## [0.2.9] - 2026-05-20
+
+Second-PC dogfood report: `claude-sync init` on a second machine refused with
+11 potential secrets, including two new patterns not covered by the v0.2.3
+DEFAULT_STOWIGNORE (`session-data/` and `plugins/marketplaces/everything-claude-code/`).
+The user clicking "Create .stowignore" only added the default body, leaving
+the new patterns to fail on the very next init.
+
+### Changed
+- **DEFAULT_STOWIGNORE broadened.** Added `session-data/` to the per-machine
+  state group and replaced the specific
+  `plugins/marketplaces/thedotmack/cursor-hooks/STANDALONE-SETUP.md` line with
+  `plugins/marketplaces/` so any current and future marketplace plugin
+  fixtures stay local. The old line is harmlessly subsumed by the broader
+  pattern.
+
+### Added
+- **Smart .stowignore generation.** The "Create .stowignore" action now
+  parses the sidecar's secret-scan stderr, extracts the absolute paths it
+  flagged, and asks the new `create_smart_stowignore` Tauri command to
+  append them under a `# Auto-detected from secret-scan` section in
+  addition to the default body. One click recovers from the secret scan on
+  any machine, not just the one whose patterns happened to match the
+  default. Empty detected array → behaves identically to the previous
+  default-only path, so the regression surface is zero.
+- `parseSecretScanPaths(stderr)` pure helper in `src/lib/stowignore.ts`
+  with five vitest cases (Windows payload, empty stderr, no secret-scan
+  lines, POSIX paths, deduplication) plus a length cap to avoid
+  pathological regex matching on malformed input.
+- `build_smart_stowignore_body(default, claude_dir, detected)` pure Rust
+  helper with six cargo tests pinning the empty / single / multiple /
+  duplicate / outside-claude-dir / Windows-case-mismatch branches. The
+  case-mismatch fallback strips paths via lowercased POSIX-normalised
+  prefix comparison, so a sidecar emitting `c:\Users\…` while
+  `resolve_claude_dir()` returns `C:\Users\…` still resolves correctly.
+- `path_outside_claude_dir` error string now has a dedicated i18n key
+  (`error-banner.path-outside-claude-dir`) instead of leaking the raw
+  identifier into the toast.
+
+### Notes
+- The existing `stowignore_exists` guard is kept — users who hand-edited
+  their `.stowignore` are never overwritten; they get the
+  `Edit it manually` info toast instead.
+- The Rust path scope check (`strip_prefix(claude_dir)`) is the primary
+  defence; the case-insensitive fallback is a safety net for the specific
+  Windows drive-letter mismatch class only.
+
 ## [0.2.8] - 2026-05-20
 
 Hotfix: surfaced GitHub logout as a prominent entry point in the app header.

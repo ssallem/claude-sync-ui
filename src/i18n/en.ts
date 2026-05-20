@@ -117,6 +117,13 @@ export const en: Dict = {
   "error-banner.create-stowignore": "Create .stowignore",
   "error-banner.stowignore-success":
     "Default .stowignore created. Try Initialize again.",
+  "error-banner.smart-stowignore-success":
+    "Smart .stowignore created with {n} detected path(s) added. Try Initialize again.",
+  // v0.2.9 — smart .stowignore failure: the sidecar's stderr referenced a
+  // path outside ~/.claude/, so the Rust validator refused to add it. Falls
+  // through to a friendly toast instead of leaking the raw error code.
+  "error-banner.path-outside-claude-dir":
+    "Cannot create .stowignore: a detected path is outside ~/.claude/. Edit the file manually.",
   "error-banner.stowignore-exists":
     ".stowignore already exists. Edit it manually.",
 

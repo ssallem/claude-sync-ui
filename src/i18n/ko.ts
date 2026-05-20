@@ -114,6 +114,9 @@ export const ko: Dict = {
   "app.resolve-coming":
     "충돌 해결 UI는 v0.2에서 추가될 예정입니다. 지금은 ~/.claude/<file>을 직접 편집하여 '_conflicts' 키를 제거한 뒤 푸시하세요.",
   "app.init-success": "초기화 완료! ~/.claude가 원격 저장소와 동기화되었습니다.",
+  // v0.2.6 — sidecar의 거짓 success 감지 시 표시
+  "app.push-unverified":
+    "푸시가 GitHub에 도달하지 못했습니다 — 본체가 success를 보고했지만 origin이 갱신되지 않았습니다. 사이드카 버그입니다. 수동으로 `git push`를 실행하거나 다음 버전을 기다려주세요.",
 
   // Doctor levels (UI badge mapping)
   "doctor.level.ok": "정상",

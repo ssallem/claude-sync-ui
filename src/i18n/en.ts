@@ -123,6 +123,11 @@ export const en: Dict = {
   "app.resolve-coming":
     "Conflict resolver coming in v0.2 — for now, edit ~/.claude/<file> manually and remove the '_conflicts' key, then push.",
   "app.init-success": "Initialized! ~/.claude is now synced with the remote.",
+  // v0.2.6 — sidecar reported success but origin was not updated.
+  // Used when the Rust push command's post-push status check detects a
+  // ghost push (see commands.rs::verify_push_status).
+  "app.push-unverified":
+    "Push did not reach GitHub — sidecar reported success but origin was not updated. This is a sidecar bug. Run `git push` manually or wait for the next sidecar release.",
 
   // Doctor levels (UI badge mapping)
   "doctor.level.ok": "OK",

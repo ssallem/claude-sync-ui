@@ -142,6 +142,24 @@ pub async fn status(app: AppHandle) -> Result<StatusResult, String> {
     Ok(parse::parse_status(&stdout))
 }
 
+// v0.2.6 — post-push verification.
+// After a non-"Nothing to push" sidecar push, status.ahead must be 0
+// (the remote-tracking ref has caught up). If it didn't, the sidecar
+// reported a ghost success — common bug in the upstream claude-sync where
+// the push subcommand commits locally but never reaches origin.
+// Pure helper so the Tauri command (AppHandle-bound) can be exercised
+// via unit tests without spinning up the sidecar.
+fn verify_push_status(ahead: u32) -> Result<(), String> {
+    if ahead == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "push_unverified: sidecar reported success but origin is still {} commit(s) behind",
+            ahead
+        ))
+    }
+}
+
 #[tauri::command]
 pub async fn push(app: AppHandle, message: Option<String>) -> Result<PushResult, String> {
     let mut args: Vec<&str> = vec!["push"];
@@ -159,7 +177,74 @@ pub async fn push(app: AppHandle, message: Option<String>) -> Result<PushResult,
     if is_not_initialized_stdout(&stdout) {
         return Err(stdout.trim().to_string());
     }
-    Ok(parse::parse_push(&stdout))
+    let result = parse::parse_push(&stdout);
+
+    // "Nothing to push" — sidecar never actually called git push, so the
+    // remote-tracking ref was never expected to change. Skip verification.
+    if result.nothing_to_push {
+        return Ok(result);
+    }
+
+    // v0.2.6 — verify the sidecar's success claim by re-reading status. The
+    // sidecar's push command has been observed to print "Pushed N file(s) ->
+    // origin/main" and exit 0 while the remote actually stayed empty. If
+    // ahead > 0 after a non-empty push, surface a dedicated push_unverified
+    // error so the UI can warn the user that data did not reach GitHub.
+    //
+    // IMPORTANT — verification accuracy depends on the sidecar's status
+    // implementation: `parse_status::ahead` derives from
+    // `git rev-list --count origin/<branch>..HEAD` style logic, which requires
+    // the local remote-tracking ref (refs/remotes/origin/<branch>) to be
+    // correctly updated by the sidecar's push step. If the sidecar's push is
+    // the buggy one that omits the git-push stage entirely, this premise holds
+    // (ahead stays > 0 → we catch it). But a future bug variant where the
+    // sidecar updates the remote-tracking ref locally without pushing to
+    // origin would silently pass this verification. Long-term mitigation
+    // when the sidecar's push is rewritten: switch verification to
+    // `git ls-remote origin <branch>` direct query.
+    //
+    // Defensive handling for two failure modes of the status check itself:
+    //   - sidecar status returns an error    → wrap as push_unverified
+    //   - sidecar prints "Not initialized." → tolerate (this would only
+    //     happen if the repo was de-initialised between push and status,
+    //     which the user would already see via the InitScreen on next render)
+    //
+    // TODO(v0.3) — wrap run_sidecar in tokio::time::timeout. The push command
+    // now makes two sequential sidecar calls; if either hangs, the entire
+    // Tauri command blocks indefinitely with no user feedback.
+    let status_result = match run_sidecar(&app, &["status"]).await {
+        Ok((st_out, st_err, st_code)) => {
+            if st_code != 0 {
+                return Err(format!(
+                    "push_unverified: status check failed after push ({})",
+                    fail_message(&st_err, &st_out)
+                ));
+            }
+            // NOTE — this fallback is a known escape hatch: if the sidecar's status
+            // responds with "Not initialized." after a successful push (extremely
+            // rare, would require the repo being de-initialised between push and
+            // status), we cannot verify ghost-push and return Ok(result). The user
+            // will see the InitScreen on the next status refresh and re-configure.
+            // A more conservative implementation would return push_unverified here,
+            // but that would surface false alarms in the legitimate de-init case.
+            if is_not_initialized_stdout(&st_out) {
+                // Treat as benign — the InitScreen route will reappear on
+                // next refresh and the user will reconfigure. Don't block
+                // the push report.
+                return Ok(result);
+            }
+            parse::parse_status(&st_out)
+        }
+        Err(e) => {
+            return Err(format!(
+                "push_unverified: status check failed after push ({})",
+                e
+            ));
+        }
+    };
+
+    verify_push_status(status_result.ahead)?;
+    Ok(result)
 }
 
 #[tauri::command]
@@ -549,7 +634,8 @@ pub async fn open_in_editor(app: AppHandle, rel_path: String) -> Result<(), Stri
 mod tests {
     use super::{
         create_default_stowignore_at, fail_message, is_not_initialized_stdout,
-        rewrite_origin_url, validate_open_path, validate_remote_url, DEFAULT_STOWIGNORE,
+        rewrite_origin_url, validate_open_path, validate_remote_url, verify_push_status,
+        DEFAULT_STOWIGNORE,
     };
     use std::path::PathBuf;
 
@@ -884,5 +970,25 @@ mod tests {
             "path_traversal_rejected"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // v0.2.6 — ghost-push detector. After a non-trivial push, status.ahead
+    // must be 0 (remote-tracking ref caught up). If it didn't, the sidecar
+    // lied; we surface a dedicated `push_unverified:`-prefixed error so the
+    // FE can show a targeted warning instead of the generic action-failed
+    // toast.
+    #[test]
+    fn verify_push_status_ok_when_ahead_zero() {
+        assert!(verify_push_status(0).is_ok());
+    }
+
+    #[test]
+    fn verify_push_status_err_when_ahead_nonzero() {
+        let e = verify_push_status(3).unwrap_err();
+        assert!(
+            e.starts_with("push_unverified:"),
+            "expected 'push_unverified:' prefix, got: {e}"
+        );
+        assert!(e.contains("3 commit(s) behind"));
     }
 }

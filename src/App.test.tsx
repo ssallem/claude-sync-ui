@@ -145,4 +145,107 @@ describe("App (integration)", () => {
       expect(statusCalls.length).toBeGreaterThanOrEqual(2);
     });
   });
+
+  // v0.2.6 — sidecar의 거짓 success를 GUI가 잡아 별도 토스트로 안내.
+  it("push_unverified error shows dedicated warning toast, not generic action-failed", async () => {
+    mapResponses({
+      status: async () => okStatus,
+      doctor: async () => okDoctor,
+      push: async () => {
+        throw "push_unverified: sidecar reported success but origin is still 1 commit(s) behind";
+      },
+    });
+
+    renderApp();
+
+    const pushBtn = await screen.findByRole("button", { name: /Push 2/ });
+    await act(async () => { pushBtn.click(); });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Push did not reach GitHub/i)
+      ).toBeInTheDocument();
+      // 일반 "push failed: ..." action-failed 토스트는 노출되면 안 된다.
+      expect(
+        screen.queryByText(/push failed:/i)
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  // v0.2.6 회귀: 정상 push는 push_unverified 분기를 타지 않는다.
+  it("normal push (Ok result) does not show push_unverified warning", async () => {
+    mapResponses({
+      status: async () => okStatus,
+      doctor: async () => okDoctor,
+      push: async () => ({
+        pushed: 1,
+        commit_sha: "abc1234",
+        message: "sync",
+        nothing_to_push: false,
+      }),
+    });
+
+    renderApp();
+    const pushBtn = await screen.findByRole("button", { name: /Push 2/ });
+    await act(async () => { pushBtn.click(); });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Push did not reach GitHub/i)).not.toBeInTheDocument();
+      expect(invokeMock.mock.calls.filter((c) => c[0] === "push").length).toBe(1);
+    });
+  });
+
+  // v0.2.6 회귀: push_unverified 케이스에서는 lastSyncAt 갱신을 막아야 한다.
+  // 갱신되면 RemoteBar의 "Last sync" 표시가 false success 직후 "방금"으로
+  // 바뀌어 사용자에게 misleading한 안심을 준다.
+  it("push_unverified does NOT update lastSync (lastSync stays at initial 'never')", async () => {
+    mapResponses({
+      status: async () => okStatus,
+      doctor: async () => okDoctor,
+      push: async () => {
+        throw "push_unverified: sidecar reported success but origin is still 1 commit(s) behind";
+      },
+    });
+
+    renderApp();
+
+    const pushBtn = await screen.findByRole("button", { name: /Push 2/ });
+    await act(async () => { pushBtn.click(); });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Push did not reach GitHub/i)).toBeInTheDocument();
+    });
+    // RemoteBar shows "(no sync yet)" — translation key remote-bar.no-sync-yet.
+    // Confirms setLastSyncAt was NOT called: lastSyncAt remains null → formatAgo → "never".
+    expect(screen.getByText(/no sync yet/i)).toBeInTheDocument();
+  });
+
+  // v0.2.6 회귀: 정상 push는 lastSync를 갱신해야 한다.
+  it("normal push updates lastSync (RemoteBar reflects fresh sync)", async () => {
+    mapResponses({
+      status: async () => okStatus,
+      doctor: async () => okDoctor,
+      push: async () => ({
+        pushed: 1,
+        commit_sha: "abc1234",
+        message: "sync",
+        nothing_to_push: false,
+      }),
+    });
+
+    renderApp();
+    const pushBtn = await screen.findByRole("button", { name: /Push 2/ });
+    await act(async () => { pushBtn.click(); });
+
+    await waitFor(() => {
+      // Push didn't trigger the unverified path.
+      expect(screen.queryByText(/Push did not reach GitHub/i)).not.toBeInTheDocument();
+    });
+    // After a successful push lastSyncAt is set to Date.now() and formatAgo
+    // returns "just now" (or seconds-level text). At minimum, the "(no sync yet)"
+    // placeholder must NOT be present anymore.
+    await waitFor(() => {
+      expect(screen.queryByText(/no sync yet/i)).not.toBeInTheDocument();
+    });
+  });
 });

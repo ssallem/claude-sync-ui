@@ -45,6 +45,37 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 - Optional description field in `RepoCreator` so users can ship a one-liner
   to GitHub alongside the name (S4).
 
+## [0.2.6] - 2026-05-20
+
+Hotfix for a silent push failure discovered during the v0.2.5 dogfood:
+the sidecar printed "Pushed 1460 file(s) → origin/main" with exit 0 but
+the remote (`size=0`, `branches=[]`) was never updated. Local commits
+were created normally — only the `git push` stage was either skipped or
+swallowed by the sidecar's `push` subcommand.
+
+### Fixed
+- **Detect ghost-push (sidecar false success).** After a non-trivial push,
+  the Tauri `push` command re-runs `status` and confirms `ahead` dropped
+  to 0. If the sidecar lied, we surface a dedicated `push_unverified`
+  error and the GUI shows: "Push did not reach GitHub — sidecar reported
+  success but origin was not updated. This is a sidecar bug. Run
+  `git push` manually or wait for the next sidecar release."
+- "Nothing to push" results skip the verification (no remote state was
+  expected to change). A `Not initialized` status response after push is
+  treated as benign — InitScreen will reappear on next refresh.
+
+### Notes
+- The fix lives entirely in the Rust layer (`commands.rs` +
+  `verify_push_status` pure helper); the sidecar itself is patched
+  separately in the `claude-sync` repo.
+- Two new cargo tests pin the helper's two branches; two new vitest
+  cases (`App.test.tsx`) confirm the FE shows the dedicated warning
+  for `push_unverified:` errors and stays silent for normal pushes.
+- v0.2.5 Known follow-ups (Korean localised error mapping, `commands.rs`
+  split) still pending — both queued for v0.3 along with the
+  `run_sidecar` timeout (the post-push status re-call now makes the
+  no-timeout behaviour twice as visible).
+
 ## [0.2.5] - 2026-05-20
 
 Second-pass hotfix after the v0.2.4 dogfood. Two new user reports from the

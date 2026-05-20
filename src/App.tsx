@@ -59,7 +59,26 @@ function App() {
   }, [loading, toast, t]);
 
   const handlePush = useCallback(() => runAction("push",
-    async () => { setErrorDismissed(false); await api.push(); setLastSyncAt(Date.now()); await refresh(); }), [runAction, refresh]);
+    async () => {
+      setErrorDismissed(false);
+      try {
+        await api.push();
+      } catch (e) {
+        const m = errMsg(e);
+        // v0.2.6 — sidecar의 거짓 success는 일반 push 실패와 구분된 토스트로
+        // 표시. handleCreateStowignore와 동일한 inner-try-catch 패턴 — runAction
+        // 의 공통 catch(action-failed 토스트)를 우회하고, runAction의 finally는
+        // 정상 동작해 loading 해제.
+        if (m.startsWith("push_unverified:")) {
+          toast.error(t("app.push-unverified"));
+          return;
+        }
+        throw e;
+      }
+      setLastSyncAt(Date.now());
+      await refresh();
+    }
+  ), [runAction, refresh, toast, t]);
   const handlePull = useCallback(() => runAction("pull",
     async () => { setErrorDismissed(false); await api.pull(); setLastSyncAt(Date.now()); await refresh(); }), [runAction, refresh]);
   const handleRefresh = useCallback(() => runAction("refresh", async () => { setErrorDismissed(false); await refresh(); }), [runAction, refresh]);

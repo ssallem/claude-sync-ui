@@ -61,7 +61,7 @@ export default function Header({ onSettings, onRefresh }: HeaderProps) {
     <header className="bg-slate-900 text-white p-3 flex justify-between items-center border-b border-slate-800">
       <div className="flex items-center gap-2">
         <span className="text-base font-semibold tracking-tight">claude-sync</span>
-        <span className="text-xs text-slate-400">MVP</span>
+        <span className="text-xs text-slate-400">v{__APP_VERSION__}</span>
       </div>
       <div className="flex items-center gap-2">
         {githubLoggedIn && (

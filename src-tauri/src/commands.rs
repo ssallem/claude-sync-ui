@@ -63,6 +63,12 @@ pub struct DoctorCheck {
     pub detail: String,
 }
 
+#[derive(serde::Serialize, Clone)]
+pub struct StowignoreResult {
+    pub action: String,
+    pub entries_written: u32,
+}
+
 // Spawn the sidecar and collect full stdout/stderr/exit. Err only on spawn failure;
 // callers decide how to handle non-zero exit codes (doctor wants the body either way).
 async fn run_sidecar(app: &AppHandle, args: &[&str]) -> Result<(String, String, i32), String> {
@@ -533,36 +539,131 @@ fn build_smart_stowignore_body(
     Ok(body)
 }
 
-// v0.2.9 — public command: same contract as create_default_stowignore but
-// appends paths the FE parsed from the sidecar's secret-scan stderr.
-// detected_paths가 빈 배열이면 DEFAULT_STOWIGNORE 그대로 write.
-//   - Err("stowignore_exists")     — 사용자가 직접 편집했을 가능성 → 덮어쓰기 금지
-//   - Err("claude_dir_not_found")  — ~/.claude/ 자체가 없음
-//   - Err("path_outside_claude_dir") — detected 중 claude_dir 밖 경로
+// v0.2.10 — append-only variant for when a .stowignore already exists.
+// Reads the existing body line-by-line and only appends detected paths
+// that don't already have an exact line match. Preserves all hand-edits.
+// Returns (new_body, n_appended) — n_appended == 0 means no change needed.
+// Stable Err: "path_outside_claude_dir"
+fn build_appended_stowignore_body(
+    existing: &str,
+    claude_dir: &Path,
+    detected: &[String],
+) -> Result<(String, u32), String> {
+    let mut needed_rels: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for abs in detected {
+        let p = Path::new(abs);
+        let rel = match p.strip_prefix(claude_dir) {
+            Ok(r) => r.to_path_buf(),
+            Err(_) => {
+                // v0.2.9 hotfix 폴백: Windows drive-letter case mismatch
+                let abs_str = p.to_string_lossy().to_lowercase();
+                let claude_str = claude_dir.to_string_lossy().to_lowercase();
+                let abs_norm = abs_str.replace('\\', "/");
+                let claude_norm = claude_str.replace('\\', "/");
+                if let Some(stripped) = abs_norm.strip_prefix(&claude_norm) {
+                    let stripped = stripped.trim_start_matches('/').trim_start_matches('\\');
+                    std::path::PathBuf::from(stripped)
+                } else {
+                    return Err("path_outside_claude_dir".to_string());
+                }
+            }
+        };
+        let s = rel.to_string_lossy().replace('\\', "/");
+        if !s.is_empty() && seen.insert(s.clone()) {
+            needed_rels.push(s);
+        }
+    }
+
+    let existing_lines: std::collections::HashSet<&str> = existing
+        .lines()
+        .map(|l| l.trim())
+        .collect();
+    let missing: Vec<String> = needed_rels
+        .into_iter()
+        .filter(|r| !existing_lines.contains(r.as_str()))
+        .collect();
+
+    if missing.is_empty() {
+        return Ok((existing.to_string(), 0));
+    }
+
+    let mut body = existing.to_string();
+    if !body.ends_with('\n') {
+        body.push('\n');
+    }
+    body.push_str("\n# Auto-detected from secret-scan (appended)\n");
+    for r in &missing {
+        body.push_str(r);
+        body.push('\n');
+    }
+    Ok((body, missing.len() as u32))
+}
+
+// v0.2.10 — upsert: writes DEFAULT_STOWIGNORE + detected paths when no
+// .stowignore exists; appends missing detected paths to existing body
+// otherwise. Stable Err: "claude_dir_not_found", "path_outside_claude_dir"
 #[tauri::command]
-pub async fn create_smart_stowignore(detected_paths: Vec<String>) -> Result<(), String> {
+pub async fn create_smart_stowignore(
+    detected_paths: Vec<String>,
+) -> Result<StowignoreResult, String> {
     let claude_dir = resolve_claude_dir()?;
     if !claude_dir.exists() {
         return Err("claude_dir_not_found".to_string());
     }
     let target = claude_dir.join(".stowignore");
-    if target.exists() {
-        return Err("stowignore_exists".to_string());
+
+    if !target.exists() {
+        // Fresh creation path
+        let body = build_smart_stowignore_body(DEFAULT_STOWIGNORE, &claude_dir, &detected_paths)?;
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let tmp_name = format!(".stowignore.tmp.{}.{}", std::process::id(), nanos);
+        let tmp_path = claude_dir.join(tmp_name);
+        std::fs::write(&tmp_path, &body)
+            .map_err(|e| format!("write {}: {e}", tmp_path.display()))?;
+        std::fs::rename(&tmp_path, &target).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp_path);
+            format!("replace {}: {e}", target.display())
+        })?;
+        return Ok(StowignoreResult {
+            action: "created".to_string(),
+            entries_written: detected_paths.len() as u32,
+        });
     }
-    let body = build_smart_stowignore_body(DEFAULT_STOWIGNORE, &claude_dir, &detected_paths)?;
+
+    // Append path
+    let existing = std::fs::read_to_string(&target)
+        .map_err(|e| format!("read {}: {e}", target.display()))?;
+    let (new_body, appended_count) =
+        build_appended_stowignore_body(&existing, &claude_dir, &detected_paths)?;
+
+    if appended_count == 0 {
+        return Ok(StowignoreResult {
+            action: "no_change".to_string(),
+            entries_written: 0,
+        });
+    }
+
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos())
         .unwrap_or(0);
     let tmp_name = format!(".stowignore.tmp.{}.{}", std::process::id(), nanos);
     let tmp_path = claude_dir.join(tmp_name);
-    std::fs::write(&tmp_path, &body)
+    std::fs::write(&tmp_path, &new_body)
         .map_err(|e| format!("write {}: {e}", tmp_path.display()))?;
     std::fs::rename(&tmp_path, &target).map_err(|e| {
         let _ = std::fs::remove_file(&tmp_path);
         format!("replace {}: {e}", target.display())
     })?;
-    Ok(())
+
+    Ok(StowignoreResult {
+        action: "appended".to_string(),
+        entries_written: appended_count,
+    })
 }
 
 // Return the contents of ~/.claude/.stowignore so the UI can show the user
@@ -768,10 +869,12 @@ pub async fn open_in_editor(app: AppHandle, rel_path: String) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::{
-        build_smart_stowignore_body, create_default_stowignore_at, fail_message,
-        is_not_initialized_stdout, parse_ls_remote_output, rewrite_origin_url, validate_open_path,
-        validate_remote_url, DEFAULT_STOWIGNORE,
+        build_appended_stowignore_body, build_smart_stowignore_body, create_default_stowignore_at,
+        fail_message, is_not_initialized_stdout, parse_ls_remote_output, rewrite_origin_url,
+        validate_open_path, validate_remote_url, DEFAULT_STOWIGNORE,
     };
+    #[allow(unused_imports)]
+    use super::StowignoreResult;
     use std::path::PathBuf;
 
     // Small per-test temp dir without pulling in the `tempfile` crate. PID +
@@ -1245,6 +1348,68 @@ mod tests {
         // session-data/x.tmp 가 단 한 번만 등장해야 함
         let count = body.matches("session-data/x.tmp").count();
         assert_eq!(count, 1, "expected exactly one occurrence, got {count}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // v0.2.10 — build_appended_stowignore_body: append-only helper that
+    // upserts missing detected paths into an existing .stowignore body.
+
+    #[test]
+    fn appended_empty_existing_no_detected_no_change() {
+        let dir = make_tempdir("appended-empty");
+        let (body, n) = build_appended_stowignore_body("", &dir, &[]).unwrap();
+        assert_eq!(body, "");
+        assert_eq!(n, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn appended_all_missing_appends_all() {
+        let dir = make_tempdir("appended-all-missing");
+        let p1 = dir.join("session-data/a.tmp").to_string_lossy().to_string();
+        let p2 = dir.join("plugins/marketplaces/x/y.json").to_string_lossy().to_string();
+        let existing = "# user header\n.credentials.json\nhistory.jsonl\n";
+        let (body, n) = build_appended_stowignore_body(existing, &dir, &[p1, p2]).unwrap();
+        assert_eq!(n, 2);
+        assert!(body.contains("# user header\n"));
+        assert!(body.contains("# Auto-detected from secret-scan (appended)\n"));
+        assert!(body.contains("session-data/a.tmp\n"));
+        assert!(body.contains("plugins/marketplaces/x/y.json\n"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn appended_partial_match_only_appends_missing() {
+        let dir = make_tempdir("appended-partial");
+        let p1 = dir.join("session-data/a.tmp").to_string_lossy().to_string();
+        let p2 = dir.join("plugins/marketplaces/x/y.json").to_string_lossy().to_string();
+        let existing = "history.jsonl\nsession-data/a.tmp\n";
+        let (body, n) = build_appended_stowignore_body(existing, &dir, &[p1, p2]).unwrap();
+        assert_eq!(n, 1);
+        let count = body.matches("session-data/a.tmp").count();
+        assert_eq!(count, 1, "session-data/a.tmp 가 정확히 한 번만");
+        assert!(body.contains("plugins/marketplaces/x/y.json\n"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn appended_all_present_no_change() {
+        let dir = make_tempdir("appended-all-present");
+        let p1 = dir.join("session-data/a.tmp").to_string_lossy().to_string();
+        let existing = "history.jsonl\nsession-data/a.tmp\n";
+        let (body, n) = build_appended_stowignore_body(existing, &dir, &[p1]).unwrap();
+        assert_eq!(n, 0);
+        assert_eq!(body, existing);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn appended_outside_claude_dir_returns_err() {
+        let dir = make_tempdir("appended-outside");
+        let parent = dir.parent().unwrap();
+        let outside = parent.join("definitely-not-inside-xyz").to_string_lossy().to_string();
+        let err = build_appended_stowignore_body("existing\n", &dir, &[outside]).unwrap_err();
+        assert_eq!(err, "path_outside_claude_dir");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

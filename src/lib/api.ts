@@ -10,6 +10,7 @@ import type {
   DeviceCodeResponse,
   DevicePollResponse,
   RepoCreateResponse,
+  StowignoreResult,
 } from "../types";
 
 export const api = {
@@ -35,22 +36,20 @@ export const api = {
     await invoke("set_remote", { newUrl });
   },
 
-  // v0.2.3 hotfix — write a recommended `~/.claude/.stowignore` when the
-  // sidecar's secret-scan blocks first-run init. Stable Err strings the
-  // ErrorBanner can pattern-match for user-facing messaging:
-  //   - "stowignore_exists"     → file already present, do not overwrite
-  //   - "claude_dir_not_found"  → ~/.claude/ missing on disk
-  // Any other Err is a write failure that's surfaced verbatim.
+  /**
+   * @deprecated v0.2.10 — Use createSmartStowignore instead. This command
+   * fails if .stowignore already exists; smart variant upserts safely.
+   */
   async createDefaultStowignore(): Promise<void> {
     await invoke("create_default_stowignore");
   },
 
-  // v0.2.9 — smart variant: detectedPaths가 빈 배열이면 DEFAULT_STOWIGNORE만,
-  // 1개 이상이면 DEFAULT + "# Auto-detected from secret-scan" 섹션 append.
-  // Stable Err strings (commands.rs::create_smart_stowignore):
-  //   "stowignore_exists" / "claude_dir_not_found" / "path_outside_claude_dir"
-  async createSmartStowignore(detectedPaths: string[]): Promise<void> {
-    await invoke("create_smart_stowignore", { detectedPaths });
+  // v0.2.10 — upsert: returns StowignoreResult describing whether the file
+  // was created, appended to, or already covered everything. Stable Err
+  // strings (commands.rs::create_smart_stowignore):
+  //   "claude_dir_not_found" / "path_outside_claude_dir"
+  async createSmartStowignore(detectedPaths: string[]): Promise<StowignoreResult> {
+    return invoke("create_smart_stowignore", { detectedPaths });
   },
 
   // v0.2.4 — read ~/.claude/.stowignore for the inspector modal. Returns

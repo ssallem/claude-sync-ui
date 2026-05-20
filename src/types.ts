@@ -86,3 +86,11 @@ export interface RepoCreateResponse {
   ssh_url: string;
   full_name: string;
 }
+
+// v0.2.10 — return type for create_smart_stowignore. `action` indicates
+// whether the file was newly created, an existing file got missing entries
+// appended, or no change was needed (all detected paths already covered).
+export interface StowignoreResult {
+  action: "created" | "appended" | "no_change";
+  entries_written: number;
+}

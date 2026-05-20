@@ -45,6 +45,38 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 - Optional description field in `RepoCreator` so users can ship a one-liner
   to GitHub alongside the name (S4).
 
+## [0.2.10] - 2026-05-21
+
+Hotfix surfaced by the same second-PC dogfood that produced v0.2.9: the new
+DEFAULT patterns matched, but the "Create .stowignore" action still threw
+`stowignore_exists` on a file the user had just hand-edited, so the next
+init still tripped on a freshly detected pattern. The version label in the
+top bar was also still reading "MVP" three releases after MVP.
+
+### Added
+- **Visible app version in the Header.** Replaces the static "MVP" label
+  with `v{__APP_VERSION__}` sourced from `package.json` via a Vite `define`
+  so the value can't drift between the bundle and what users see.
+- New i18n keys `error-banner.smart-stowignore-appended` and
+  `error-banner.stowignore-already-complete` (en + ko lock-step) covering
+  the two new outcomes of the upsert path.
+
+### Changed
+- **`create_smart_stowignore` is now upsert.** When `.stowignore` already
+  exists it appends only the missing detected paths under an
+  `# Auto-detected from secret-scan (appended)` section, preserving the
+  user's hand-edits line-for-line. Return type is now `StowignoreResult
+  { action, entries_written }` where `action` ∈ `"created" | "appended" |
+  "no_change"`. The `stowignore_exists` error is no longer thrown — the
+  FE 3-way branch picks the matching toast.
+- `api.ts::createDefaultStowignore` marked `@deprecated` (kept for
+  callers that haven't migrated; smart variant is the recommended path).
+
+### Tests
+- 5 new cargo tests for `build_appended_stowignore_body` covering
+  empty-input / all-missing / partial-match / all-present / outside-claude-dir,
+  bringing the lib total to 67.
+
 ## [0.2.9] - 2026-05-20
 
 Second-PC dogfood report: `claude-sync init` on a second machine refused with

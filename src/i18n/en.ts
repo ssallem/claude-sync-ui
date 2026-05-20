@@ -126,6 +126,10 @@ export const en: Dict = {
     "Cannot create .stowignore: a detected path is outside ~/.claude/. Edit the file manually.",
   "error-banner.stowignore-exists":
     ".stowignore already exists. Edit it manually.",
+  "error-banner.smart-stowignore-appended":
+    "Added {n} detected path(s) to existing .stowignore. Try Initialize again.",
+  "error-banner.stowignore-already-complete":
+    "Your .stowignore already covers all detected paths. The secret-scan may have a different cause.",
 
   // Toast
   "toast.dismiss-aria": "Dismiss",

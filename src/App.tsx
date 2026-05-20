@@ -110,21 +110,27 @@ function App() {
     const sourceError = initError ?? visibleError ?? "";
     const detectedPaths = parseSecretScanPaths(sourceError);
     try {
-      await api.createSmartStowignore(detectedPaths);
-      if (detectedPaths.length > 0) {
+      const result = await api.createSmartStowignore(detectedPaths);
+      if (result.action === "created") {
+        if (detectedPaths.length > 0) {
+          toast.success(t("error-banner.smart-stowignore-success", { n: detectedPaths.length }));
+        } else {
+          toast.success(t("error-banner.stowignore-success"));
+        }
+      } else if (result.action === "appended") {
         toast.success(
-          t("error-banner.smart-stowignore-success", { n: detectedPaths.length }),
+          t("error-banner.smart-stowignore-appended", { n: result.entries_written }),
         );
       } else {
-        toast.success(t("error-banner.stowignore-success"));
+        // no_change
+        toast.info(t("error-banner.stowignore-already-complete"));
       }
       setErrorDismissed(true);
       await refresh();
     } catch (e) {
       const m = errMsg(e);
-      if (m === "stowignore_exists") {
-        toast.info(t("error-banner.stowignore-exists"));
-      } else if (m === "path_outside_claude_dir") {
+      // v0.2.10: stowignore_exists is no longer thrown (upsert).
+      if (m === "path_outside_claude_dir") {
         toast.error(t("error-banner.path-outside-claude-dir"));
       } else {
         toast.error(t("app.action-failed", { action: "stowignore", message: m }));

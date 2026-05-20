@@ -113,6 +113,10 @@ export const ko: Dict = {
     ".stowignore를 생성할 수 없습니다: 감지된 경로 중 ~/.claude/ 외부 경로가 있습니다. 파일을 직접 편집하세요.",
   "error-banner.stowignore-exists":
     ".stowignore가 이미 존재합니다. 수동으로 편집하세요.",
+  "error-banner.smart-stowignore-appended":
+    "{n}개 감지된 경로를 기존 .stowignore에 추가했습니다. 다시 초기화하세요.",
+  "error-banner.stowignore-already-complete":
+    ".stowignore가 감지된 경로를 이미 모두 포함합니다. secret-scan이 다른 원인일 수 있습니다.",
 
   // Toast
   "toast.dismiss-aria": "닫기",

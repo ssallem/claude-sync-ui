@@ -45,6 +45,49 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 - Optional description field in `RepoCreator` so users can ship a one-liner
   to GitHub alongside the name (S4).
 
+## [0.2.7] - 2026-05-20
+
+Second hotfix on top of v0.2.6. The v0.2.6 verification (sidecar status
+re-call) turned out to silently pass through the ghost-push scenario:
+when the sidecar's push never pushed to origin, `refs/remotes/origin/<branch>`
+was missing locally and the sidecar's `status` reported `ahead=0` as a
+fallback — letting the bogus success through our gate.
+
+v0.2.7 replaces sidecar-status verification with direct GitHub queries.
+
+### Changed
+- **Push verification no longer trusts the sidecar.** After a non-trivial
+  push, the Tauri layer now spawns three independent git subprocesses:
+  `rev-parse --abbrev-ref HEAD` (current branch), `rev-parse HEAD`
+  (local commit SHA), and `ls-remote origin <branch>` (remote SHA from
+  GitHub). The push is accepted only when the remote SHA equals the
+  local HEAD. Any other outcome — including an empty remote ref,
+  a SHA mismatch, a non-zero exit, or a 10-second timeout — surfaces
+  `push_unverified:` to the FE.
+- Removed the `verify_push_status(ahead: u32)` helper and its two
+  cargo tests; they were unable to distinguish a real push from the
+  sidecar's `ahead=0` fallback.
+- Updated the `app.push-unverified` toast copy to mention both
+  "sidecar bug" and "network issue" since ls-remote can fail either way.
+
+### Added
+- `parse_ls_remote_output(stdout: &str) -> Option<String>` pure helper
+  plus six cargo tests pinning the output formats git emits (normal,
+  empty, multi-ref, trailing whitespace, CRLF, no-tab).
+- New direct tokio dependency in `Cargo.toml` with `process` and `time`
+  features for `tokio::process::Command` and `tokio::time::timeout`.
+
+### Notes
+- ls-remote is a fetch-only operation — Git Credential Manager (already
+  used for fetch in v0.2.5+) handles auth cache. No new credential
+  requirements.
+- The 10-second timeout protects against a hung ls-remote (e.g. when
+  `GIT_TERMINAL_PROMPT=0` is not set and credentials are missing).
+  Future v0.2.8 candidate: set `GIT_TERMINAL_PROMPT=0` on the subprocess
+  env to fail fast instead of timing out.
+- The upstream `claude-sync` sidecar push bug remains; v0.2.7 just makes
+  the GUI tell you the truth about it.
+
 ## [0.2.6] - 2026-05-20
 
 Hotfix for a silent push failure discovered during the v0.2.5 dogfood:

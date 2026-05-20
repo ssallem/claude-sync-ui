@@ -142,22 +142,103 @@ pub async fn status(app: AppHandle) -> Result<StatusResult, String> {
     Ok(parse::parse_status(&stdout))
 }
 
-// v0.2.6 — post-push verification.
-// After a non-"Nothing to push" sidecar push, status.ahead must be 0
-// (the remote-tracking ref has caught up). If it didn't, the sidecar
-// reported a ghost success — common bug in the upstream claude-sync where
-// the push subcommand commits locally but never reaches origin.
-// Pure helper so the Tauri command (AppHandle-bound) can be exercised
-// via unit tests without spinning up the sidecar.
-fn verify_push_status(ahead: u32) -> Result<(), String> {
-    if ahead == 0 {
-        Ok(())
-    } else {
-        Err(format!(
-            "push_unverified: sidecar reported success but origin is still {} commit(s) behind",
-            ahead
-        ))
+// Parse the stdout of `git ls-remote origin <branch>`.
+// Format: "<sha>\t<refname>\n" per ref, or empty when the ref does not exist.
+// Returns the SHA of the first matching line, or None if stdout is empty.
+// Pure function — no I/O — so unit tests exercise it without git.
+fn parse_ls_remote_output(stdout: &str) -> Option<String> {
+    let line = stdout.lines().next()?;
+    let sha = line.split('\t').next()?.trim();
+    if sha.is_empty() {
+        return None;
     }
+    Some(sha.to_string())
+}
+
+// Resolve the current branch via `git rev-parse --abbrev-ref HEAD`.
+// Returns "HEAD" for detached HEAD; any spawn/exit failure is surfaced
+// as a push_unverified-prefixed Err so the user knows verification
+// could not run, instead of silently falling back to "main" and
+// comparing against the wrong branch on a master-default repo.
+async fn current_branch(claude_dir: &Path) -> Result<String, String> {
+    let output = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(claude_dir)
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .await
+        .map_err(|e| format!("push_unverified: rev-parse --abbrev-ref HEAD failed: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "push_unverified: rev-parse --abbrev-ref HEAD failed: {}",
+            stderr.trim()
+        ));
+    }
+    let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if name.is_empty() {
+        return Err("push_unverified: rev-parse --abbrev-ref HEAD returned empty output".to_string());
+    }
+    // "HEAD" (detached) is still a valid String — ls_remote_sha will look up
+    // origin/HEAD which is typically the remote default branch; SHA mismatch
+    // (or "no ref" Err) then produces a correct push_unverified outcome.
+    Ok(name)
+}
+
+// Invoke `git -C <claude_dir> rev-parse HEAD` and return the full SHA string.
+// Err with stable "push_unverified:" prefix on failure.
+async fn local_head_sha(claude_dir: &Path) -> Result<String, String> {
+    let output = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(claude_dir)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .await
+        .map_err(|e| format!("push_unverified: rev-parse HEAD failed: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "push_unverified: rev-parse HEAD failed: {}",
+            stderr.trim()
+        ));
+    }
+    let sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if sha.is_empty() {
+        return Err("push_unverified: rev-parse HEAD returned empty output".to_string());
+    }
+    Ok(sha)
+}
+
+// Invoke `git -C <claude_dir> ls-remote origin <branch>` with a 10-second
+// network timeout. Returns:
+//   Ok(Some(sha)) — the remote has the ref at that SHA
+//   Ok(None)      — the remote has no such ref (empty repo or branch not pushed)
+//   Err(...)      — spawn error, non-zero exit, or timeout
+async fn ls_remote_sha(claude_dir: &Path, branch: &str) -> Result<Option<String>, String> {
+    let fut = tokio::process::Command::new("git")
+        // v0.2.7 WARNING #1 fix — block credential prompts so a missing GCM
+        // doesn't make us wait the full 10-second timeout. GIT_TERMINAL_PROMPT=0
+        // makes git fail fast instead of asking on stdin; GIT_ASKPASS=echo is
+        // belt-and-suspenders for tools that bypass GIT_TERMINAL_PROMPT.
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ASKPASS", "echo")
+        .arg("-C")
+        .arg(claude_dir)
+        .args(["ls-remote", "origin", branch])
+        .output();
+    let output = tokio::time::timeout(std::time::Duration::from_secs(10), fut)
+        .await
+        .map_err(|_| "push_unverified: ls-remote timed out after 10s".to_string())?
+        .map_err(|e| format!("push_unverified: ls-remote failed: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "push_unverified: ls-remote failed: {}",
+            stderr.trim()
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(parse_ls_remote_output(&stdout))
 }
 
 #[tauri::command]
@@ -185,66 +266,32 @@ pub async fn push(app: AppHandle, message: Option<String>) -> Result<PushResult,
         return Ok(result);
     }
 
-    // v0.2.6 — verify the sidecar's success claim by re-reading status. The
-    // sidecar's push command has been observed to print "Pushed N file(s) ->
-    // origin/main" and exit 0 while the remote actually stayed empty. If
-    // ahead > 0 after a non-empty push, surface a dedicated push_unverified
-    // error so the UI can warn the user that data did not reach GitHub.
+    // v0.2.7 — verify push reached GitHub by querying origin directly.
+    // `git ls-remote origin <branch>` asks GitHub for the current ref SHA
+    // without depending on the sidecar's status implementation. This closes
+    // the v0.2.6 escape hatch where the sidecar's missing
+    // refs/remotes/origin/<branch> caused ahead=0 to be reported spuriously.
     //
-    // IMPORTANT — verification accuracy depends on the sidecar's status
-    // implementation: `parse_status::ahead` derives from
-    // `git rev-list --count origin/<branch>..HEAD` style logic, which requires
-    // the local remote-tracking ref (refs/remotes/origin/<branch>) to be
-    // correctly updated by the sidecar's push step. If the sidecar's push is
-    // the buggy one that omits the git-push stage entirely, this premise holds
-    // (ahead stays > 0 → we catch it). But a future bug variant where the
-    // sidecar updates the remote-tracking ref locally without pushing to
-    // origin would silently pass this verification. Long-term mitigation
-    // when the sidecar's push is rewritten: switch verification to
-    // `git ls-remote origin <branch>` direct query.
-    //
-    // Defensive handling for two failure modes of the status check itself:
-    //   - sidecar status returns an error    → wrap as push_unverified
-    //   - sidecar prints "Not initialized." → tolerate (this would only
-    //     happen if the repo was de-initialised between push and status,
-    //     which the user would already see via the InitScreen on next render)
-    //
-    // TODO(v0.3) — wrap run_sidecar in tokio::time::timeout. The push command
-    // now makes two sequential sidecar calls; if either hangs, the entire
-    // Tauri command blocks indefinitely with no user feedback.
-    let status_result = match run_sidecar(&app, &["status"]).await {
-        Ok((st_out, st_err, st_code)) => {
-            if st_code != 0 {
-                return Err(format!(
-                    "push_unverified: status check failed after push ({})",
-                    fail_message(&st_err, &st_out)
-                ));
-            }
-            // NOTE — this fallback is a known escape hatch: if the sidecar's status
-            // responds with "Not initialized." after a successful push (extremely
-            // rare, would require the repo being de-initialised between push and
-            // status), we cannot verify ghost-push and return Ok(result). The user
-            // will see the InitScreen on the next status refresh and re-configure.
-            // A more conservative implementation would return push_unverified here,
-            // but that would surface false alarms in the legitimate de-init case.
-            if is_not_initialized_stdout(&st_out) {
-                // Treat as benign — the InitScreen route will reappear on
-                // next refresh and the user will reconfigure. Don't block
-                // the push report.
-                return Ok(result);
-            }
-            parse::parse_status(&st_out)
+    // All three subprocess calls (current_branch / local_head_sha / ls_remote_sha)
+    // are independent of the sidecar. Failure is always surfaced as a
+    // "push_unverified:" prefixed error so the FE push-unverified toast fires.
+    let claude_dir = resolve_claude_dir().map_err(|e| format!("push_unverified: {e}"))?;
+    let branch = current_branch(&claude_dir).await?;
+    let local_head = local_head_sha(&claude_dir).await?;
+    let remote_sha = ls_remote_sha(&claude_dir, &branch).await?;
+    match remote_sha {
+        None => Err(format!(
+            "push_unverified: origin has no '{branch}' ref — push never reached GitHub"
+        )),
+        Some(ref s) if s == &local_head => Ok(result),
+        Some(ref s) => {
+            let remote_short = &s[..s.len().min(7)];
+            let local_short = &local_head[..local_head.len().min(7)];
+            Err(format!(
+                "push_unverified: origin/{branch} is at {remote_short} but local HEAD is {local_short}"
+            ))
         }
-        Err(e) => {
-            return Err(format!(
-                "push_unverified: status check failed after push ({})",
-                e
-            ));
-        }
-    };
-
-    verify_push_status(status_result.ahead)?;
-    Ok(result)
+    }
 }
 
 #[tauri::command]
@@ -634,7 +681,7 @@ pub async fn open_in_editor(app: AppHandle, rel_path: String) -> Result<(), Stri
 mod tests {
     use super::{
         create_default_stowignore_at, fail_message, is_not_initialized_stdout,
-        rewrite_origin_url, validate_open_path, validate_remote_url, verify_push_status,
+        parse_ls_remote_output, rewrite_origin_url, validate_open_path, validate_remote_url,
         DEFAULT_STOWIGNORE,
     };
     use std::path::PathBuf;
@@ -972,23 +1019,47 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    // v0.2.6 — ghost-push detector. After a non-trivial push, status.ahead
-    // must be 0 (remote-tracking ref caught up). If it didn't, the sidecar
-    // lied; we surface a dedicated `push_unverified:`-prefixed error so the
-    // FE can show a targeted warning instead of the generic action-failed
-    // toast.
+    // parse_ls_remote_output — 6 unit tests covering the format the git CLI emits.
+
     #[test]
-    fn verify_push_status_ok_when_ahead_zero() {
-        assert!(verify_push_status(0).is_ok());
+    fn parse_ls_remote_normal() {
+        let s = "abc1234deadbeefcafe1234\trefs/heads/main\n";
+        assert_eq!(parse_ls_remote_output(s).as_deref(), Some("abc1234deadbeefcafe1234"));
     }
 
     #[test]
-    fn verify_push_status_err_when_ahead_nonzero() {
-        let e = verify_push_status(3).unwrap_err();
-        assert!(
-            e.starts_with("push_unverified:"),
-            "expected 'push_unverified:' prefix, got: {e}"
-        );
-        assert!(e.contains("3 commit(s) behind"));
+    fn parse_ls_remote_empty_means_no_ref() {
+        assert!(parse_ls_remote_output("").is_none());
+    }
+
+    #[test]
+    fn parse_ls_remote_multi_ref_returns_first() {
+        let s = "abc1\trefs/heads/main\nxyz9\trefs/heads/feature\n";
+        assert_eq!(parse_ls_remote_output(s).as_deref(), Some("abc1"));
+    }
+
+    #[test]
+    fn parse_ls_remote_trims_trailing_whitespace_on_sha() {
+        // Defensive — git won't emit trailing whitespace before \t but parsers
+        // sometimes do (e.g. piping through tools). trim() in the parser handles it.
+        let s = "abc1234   \trefs/heads/main\n";
+        assert_eq!(parse_ls_remote_output(s).as_deref(), Some("abc1234"));
+    }
+
+    #[test]
+    fn parse_ls_remote_crlf_line_endings() {
+        let s = "abc1234\trefs/heads/main\r\n";
+        // .lines() in Rust strips both \n and \r\n line endings, so the SHA is clean.
+        assert_eq!(parse_ls_remote_output(s).as_deref(), Some("abc1234"));
+    }
+
+    #[test]
+    fn parse_ls_remote_no_tab_returns_none_or_full_line() {
+        // Malformed line without a tab. The split('\t').next() returns the whole
+        // line; we don't validate SHA shape here (caller will fail comparison if
+        // it's not a real SHA). Just verify we don't panic.
+        let s = "this-is-not-a-real-line\n";
+        let r = parse_ls_remote_output(s);
+        assert!(r.is_some()); // returns the whole line as "SHA" — comparison will fail later
     }
 }

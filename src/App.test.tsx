@@ -115,8 +115,9 @@ describe("App (integration)", () => {
     await waitFor(() => {
       expect(screen.getByText(/Tracking 5 files/)).toBeInTheDocument();
     });
-    // ActionBar Push button with "Push 1↑" label.
-    expect(screen.getByRole("button", { name: /Push 1/ })).toBeInTheDocument();
+    // ActionBar Push button. v0.2.4: count = ahead (1) + 1 pending commit
+    // (because there's one staged change) = 2. Pre-v0.2.4 this said "Push 1".
+    expect(screen.getByRole("button", { name: /Push 2/ })).toBeInTheDocument();
     // The single modified file row.
     expect(screen.getByText("foo.md")).toBeInTheDocument();
   });
@@ -130,7 +131,8 @@ describe("App (integration)", () => {
 
     renderApp();
 
-    const pushBtn = await screen.findByRole("button", { name: /Push 1/ });
+    // v0.2.4: label is "Push 2↑" with this fixture — see comment above.
+    const pushBtn = await screen.findByRole("button", { name: /Push 2/ });
     await act(async () => {
       pushBtn.click();
     });

@@ -49,13 +49,35 @@ export default function ActionBar({ status, onPush, onPull, onResolve, onRefresh
     () => (status?.changes ?? []).filter((c) => c.kind === "!").length,
     [status],
   );
+  // v0.2.4 fix: enable push when uncommitted local changes exist, even if
+  // ahead === 0. The previous logic disabled push whenever ahead === 0, which
+  // trapped users in two real-world states:
+  //   1. Unborn branch right after init — no commits yet, but 1000+ untracked
+  //      files waiting to become the initial sync. (Dogfood report.)
+  //   2. Plain working-tree edits before any local commit — `claude-sync push`
+  //      stages+commits+pushes in one step, so there's always something to do
+  //      when changes.length > 0.
+  // Conflict-kind entries are excluded because pushing with unresolved
+  // conflicts is wrong — the dedicated Resolve button handles those.
+  const pendingChanges = useMemo(
+    () => (status?.changes ?? []).filter((c) => c.kind !== "!").length,
+    [status],
+  );
+  // Count semantic: what will be on origin after a successful push.
+  // ahead already-committed + 1 pending commit if there's anything to stage.
+  const pushCount = ahead + (pendingChanges > 0 ? 1 : 0);
+  // Hard gate: never enable push while there are unresolved conflicts in the
+  // working tree — even if there's a separately-staged change. Pushing a
+  // half-merged state would land a `_conflicts`-key payload on origin and
+  // break peers on next pull.
+  const canPush = pushCount > 0 && conflicts === 0;
 
   return (
     <div className="bg-slate-900/95 border-t border-slate-800 px-3 py-2 flex items-center gap-2">
       <ActionButton
-        label={t("action-bar.push", { n: ahead })}
+        label={t("action-bar.push", { n: pushCount })}
         variant="primary"
-        disabled={ahead === 0 || loading !== null}
+        disabled={!canPush || loading !== null}
         loading={loading === "push"}
         onClick={onPush}
       />

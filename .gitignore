@@ -34,3 +34,6 @@ src-tauri/gen/schemas/
 
 # Claude Code per-project state (team-decisions, transcripts, etc.)
 .claude/
+
+# Serena MCP cache
+.serena/

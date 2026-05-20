@@ -148,4 +148,64 @@ describe("FileTree", () => {
     expect(agentsList).not.toBeNull();
     expect(within(agentsList as HTMLElement).getByText("x.md")).toBeInTheDocument();
   });
+
+  // v0.2.5 — entries whose path is a directory sentinel (trailing slash)
+  // would have produced an empty `name` row before the groupByDir guard.
+  // The fix skips them entirely; the group header for the lone dir must
+  // not appear either, since after the skip there are zero entries.
+  it("skips empty-name entries from trailing-slash paths", () => {
+    render(
+      <FileTree
+        changes={[{ path: "daemon/", kind: "?" }]}
+        tracked={1}
+        excluded_stow={0}
+        excluded_git={0}
+      />,
+    );
+    // Empty `<li>` would have been a child of a `daemon/` group; neither
+    // appears now. The empty-state message takes over because we ended up
+    // with zero displayable entries.
+    expect(screen.queryByText("daemon/")).not.toBeInTheDocument();
+    expect(screen.getByText(/No changes/i)).toBeInTheDocument();
+  });
+
+  // v0.2.5 — double-click on a normal file entry must invoke onFileOpen
+  // with the underlying ChangeEntry so App.tsx can call open_in_editor.
+  it("calls onFileOpen on double-click of a file entry", () => {
+    const onFileOpen = vi.fn();
+    render(
+      <FileTree
+        changes={[{ path: "agents/foo.md", kind: "M" }]}
+        tracked={1}
+        excluded_stow={0}
+        excluded_git={0}
+        onFileOpen={onFileOpen}
+      />,
+    );
+    // Click on the file name (or its parent <li>) — fireEvent.doubleClick
+    // bubbles up to the <li> handler.
+    fireEvent.doubleClick(screen.getByText("foo.md"));
+    expect(onFileOpen).toHaveBeenCalledTimes(1);
+    expect(onFileOpen).toHaveBeenCalledWith({ path: "agents/foo.md", kind: "M" });
+  });
+
+  // Sentinel rows would normally be filtered upstream; if any slip through,
+  // double-click must not fire. (Belt-and-suspenders since groupByDir now
+  // drops them, but the per-row isDirSentinel guard is independently safe.)
+  it("does not call onFileOpen when entries are filtered out", () => {
+    const onFileOpen = vi.fn();
+    render(
+      <FileTree
+        changes={[{ path: "daemon/", kind: "?" }]}
+        tracked={1}
+        excluded_stow={0}
+        excluded_git={0}
+        onFileOpen={onFileOpen}
+      />,
+    );
+    // No file row to click on — the empty-name skip is already covered by
+    // "skips empty-name entries from trailing-slash paths"; here we only need
+    // to assert the callback was never invoked.
+    expect(onFileOpen).not.toHaveBeenCalled();
+  });
 });

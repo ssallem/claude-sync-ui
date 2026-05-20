@@ -45,6 +45,71 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 - Optional description field in `RepoCreator` so users can ship a one-liner
   to GitHub alongside the name (S4).
 
+## [0.2.5] - 2026-05-20
+
+Second-pass hotfix after the v0.2.4 dogfood. Two new user reports from the
+same screenshot session:
+
+1. Some directory headers show `(1)` but their child rows are blank with
+   just a `?` badge floating on the right — "the folder counts a file
+   but there's no file visible."
+2. "Can I double-click a file to open it in my editor?"
+
+This release answers both.
+
+### Fixed
+- **No more blank rows for untracked-directory sentinels.** libgit2 inside
+  the sidecar emits the directory path itself (e.g. `daemon/` with a
+  trailing slash) when `recurse_untracked_dirs` is off, which produced an
+  entry with an empty display name. We now drop trailing-slash entries
+  in two layers: `parse.rs` filters them at the boundary, and
+  `FileTree.groupByDir` skips any row with a blank name as a
+  defence-in-depth fallback in case a future sidecar regresses.
+- **Empty-state message takes over when every entry was filtered.** The
+  FileTree "no changes" message keyed off `changes.length === 0`; with
+  the new filter, a status that contained only directory sentinels would
+  otherwise render an empty `<ul>`. It now keys off `groups.length === 0`.
+
+### Added
+- **Double-click a file row to open it in the OS default editor.** Backed
+  by a new `open_in_editor` Tauri command that runs the path through a
+  multi-stage validator before handing it to the opener plugin:
+  empty/`.`/control chars rejected up-front; absolute paths, UNC paths,
+  `..` traversal, mid-path `./` patterns (which `Path::components()`
+  silently normalises away), and Windows reserved device names
+  (`NUL`/`CON`/`COM1-9`/`LPT1-9`/`AUX`/`PRN`, case-insensitive,
+  including `NUL.txt` extension variants) all rejected by name.
+  `canonicalize()` then resolves the file and the result must
+  `starts_with` the canonical `claude_dir` — symlink-escape attempts are
+  caught here. Stable Rust error strings (`empty_path_rejected`,
+  `path_traversal_rejected`, `reserved_device_name`, etc.) are surfaced
+  on failure; for now they appear in the toast verbatim — a localised
+  mapping is queued for v0.2.6.
+
+### Notes
+- No sidecar/CLI change. The upstream root cause for the empty-name rows
+  is `claude-sync/src/commands/status.rs` not setting
+  `recurse_untracked_dirs(true)` on its libgit2 status options; this
+  release works around it in the UI layer so the bundled sidecar binary
+  stays unchanged.
+- The Rust opener path takes the trust-boundary cut: validation lives in
+  `validate_open_path` (a pure helper, no `AppHandle`) and is fully unit
+  tested. The `#[tauri::command]` thin-wraps it with the opener call.
+  Going through Rust also avoids widening the `opener:allow-open-path`
+  capability — the plugin's Rust API doesn't go through the IPC ACL.
+- New regression coverage: ten new cargo tests pinning the 5+ validator
+  branches (absolute/UNC/`..`/empty/control/reserved-name/`./`/missing
+  file/accepted-existing-file) plus three vitest cases for the FileTree
+  side (sentinel skip, double-click invokes `onFileOpen`, filtered-out
+  rows are inert).
+
+### Known follow-ups (v0.2.6)
+- Map stable Rust error strings to Korean/English toast copy so the
+  `Failed to open file: reserved_device_name` message doesn't leak the
+  raw identifier to end users.
+- `commands.rs` is approaching the 800-LOC guideline limit; split the
+  editor-related helpers into `editor.rs`.
+
 ## [0.2.4] - 2026-05-20
 
 Hotfix release covering three issues a first-time user surfaced after the

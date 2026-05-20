@@ -95,6 +95,13 @@ fn parse_change_entry(raw: &str) -> Option<ChangeEntry> {
     if kind.is_empty() || path.is_empty() {
         return None;
     }
+    // libgit2's status with recurse_untracked_dirs=false emits untracked
+    // directories as "daemon/" (trailing slash). These are not files, so we
+    // skip them — if we let them through, FileTree.groupByDir downstream
+    // produces a child with an empty `name` and the UI renders a blank row.
+    if path.ends_with('/') || path.ends_with('\\') {
+        return None;
+    }
     // Accept any 1-2 char status marker; normalise to first char for the typed enum-ish field.
     Some(ChangeEntry {
         path: path.to_string(),
@@ -410,6 +417,40 @@ mod tests {
             }],
         };
         assert!(extract_remote_url(&r).is_none());
+    }
+
+    // v0.2.5 regression: libgit2's status with recurse_untracked_dirs=false
+    // emits untracked directories as "daemon/" with a trailing slash. These
+    // entries are not files, so parse_change_entry must drop them — otherwise
+    // FileTree.groupByDir downstream creates a child node with an empty
+    // `name` and the UI shows a blank, unselectable row.
+    #[test]
+    fn trailing_slash_entry_returns_none() {
+        assert!(super::parse_change_entry("  ?  daemon/").is_none());
+        assert!(super::parse_change_entry("  ??  cache/").is_none());
+        // Even a single trailing slash on a nested-looking path must be
+        // rejected — the trailing slash is the directory signal.
+        assert!(super::parse_change_entry("  M  agents/sub/").is_none());
+    }
+
+    #[test]
+    fn trailing_backslash_entry_returns_none() {
+        // Defensive: on Windows the sidecar could conceivably hand back a
+        // backslash-terminated directory. We treat it the same as `/`.
+        assert!(super::parse_change_entry("  ?  daemon\\").is_none());
+    }
+
+    // End-to-end: parse_status with a trailing-slash entry mixed in must
+    // produce a clean changes list where every entry has a non-empty path.
+    #[test]
+    fn status_with_trailing_slash_produces_no_empty_path() {
+        let s = "Branch: main (ahead 0, behind 0)\n\
+                 Changes:\n  ?  daemon/\n  ?  ok.md\n\
+                 Tracking 1 file(s) (excluded: 0 by .stowignore / 0 by .gitignore)\n";
+        let r = parse_status(s);
+        assert_eq!(r.changes.len(), 1);
+        assert_eq!(r.changes[0].path, "ok.md");
+        assert!(!r.changes.iter().any(|c| c.path.is_empty()));
     }
 
     #[test]

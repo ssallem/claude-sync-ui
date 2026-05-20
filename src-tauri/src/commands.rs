@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use tauri::AppHandle;
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_shell::ShellExt;
 
 use crate::github;
@@ -408,11 +409,147 @@ pub async fn github_create_repo(
     github::create_repo(&name, description.as_deref()).await
 }
 
+// Pure validator for the `open_in_editor` command. Extracted so unit tests
+// can exercise the 5-stage path-traversal defence without needing an
+// AppHandle. Returns the absolute canonical path on success. Stable error
+// strings the FE pattern-matches: "absolute_path_rejected",
+// "unc_path_rejected", "path_traversal_rejected", "file_not_found",
+// "path_escapes_claude_dir", "resolve_claude_dir_failed: {e}".
+fn validate_open_path(rel_path: &str, claude_dir: &Path) -> Result<PathBuf, String> {
+    use std::path::Component;
+
+    // Reject empty string and "." — claude_dir.join("") and join(".") both
+    // resolve to claude_dir itself, which would open the directory in a file
+    // manager instead of a file. Explicit reject is clearer than relying on
+    // the canonicalize+starts_with combo to catch this.
+    if rel_path.is_empty() || rel_path == "." {
+        return Err("empty_path_rejected".to_string());
+    }
+
+    // Control chars (NUL byte etc.) cause platform-dependent EINVAL on open;
+    // reject explicitly with a clear message instead of leaking through to
+    // canonicalize() and surfacing as "file_not_found".
+    if rel_path.chars().any(|c| c.is_control()) {
+        return Err("path_contains_control_chars".to_string());
+    }
+
+    let p = Path::new(rel_path);
+
+    // 1) UNC paths first (Windows "\\\\server\\share", POSIX "//host"). On
+    //    Windows UNC also trips Path::is_absolute(), so we MUST check this
+    //    before the absolute-path branch — otherwise UNC inputs report
+    //    "absolute_path_rejected" instead of the more precise "unc_path_rejected".
+    if rel_path.starts_with("\\\\") || rel_path.starts_with("//") {
+        return Err("unc_path_rejected".to_string());
+    }
+
+    // 2) Absolute paths are rejected outright. We OR three checks because
+    //    Path::is_absolute()'s semantics differ per host OS:
+    //      - On Windows it returns false for "/etc/passwd" (no drive letter).
+    //      - On POSIX it returns false for "C:\\Windows\\..." (no leading /).
+    //    Adding explicit leading "/" and "\\" checks closes both gaps so the
+    //    defence holds regardless of which OS the binary was built for.
+    if p.is_absolute() || rel_path.starts_with('/') || rel_path.starts_with('\\') {
+        return Err("absolute_path_rejected".to_string());
+    }
+
+    // 3a) Reject inline "." segments via raw-string match (e.g.
+    //     "agents/./foo.md"). Path::components() normalises a mid-path "."
+    //     away, so by the time we iterate components below it would be
+    //     invisible — we have to catch it on the raw input first. Doesn't
+    //     open anything dangerous on its own, but signals a malformed input
+    //     we'd rather catch loudly with a clear error.
+    if rel_path.contains("/./")
+        || rel_path.contains("\\.\\")
+        || rel_path.contains("/.\\")
+        || rel_path.contains("\\./")
+        || rel_path.starts_with("./")
+        || rel_path.starts_with(".\\")
+        || rel_path.ends_with("/.")
+        || rel_path.ends_with("\\.")
+    {
+        return Err("path_traversal_rejected".to_string());
+    }
+
+    // 3b) Walk the components once: reject ParentDir (traversal), and reject
+    //     Windows reserved device names ("NUL", "CON", "COM1"..."COM9",
+    //     "LPT1"..."LPT9", "AUX", "PRN"). canonicalize() would resolve those
+    //     device names to "\\.\NUL" etc. which falls outside claude_dir and
+    //     gets caught by starts_with below, but that's incidental — we'd
+    //     rather reject them with a clear message. Case-insensitive per
+    //     Windows rules. Windows also treats "NUL.txt" the same way, so we
+    //     strip the extension before comparing.
+    const RESERVED: &[&str] = &[
+        "NUL", "CON", "AUX", "PRN",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    for component in p.components() {
+        match component {
+            Component::ParentDir => {
+                return Err("path_traversal_rejected".to_string());
+            }
+            Component::Normal(os) => {
+                if let Some(s) = os.to_str() {
+                    // Strip an extension (Windows treats "NUL.txt" the same way).
+                    let stem = s.split('.').next().unwrap_or(s);
+                    if RESERVED.iter().any(|r| r.eq_ignore_ascii_case(stem)) {
+                        return Err("reserved_device_name".to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // 4) Join under claude_dir.
+    let candidate = claude_dir.join(rel_path);
+
+    // 5) canonicalize() resolves symlinks AND requires the file to exist.
+    //    Missing file → "file_not_found". Symlinks pointing outside
+    //    claude_dir → caught by the starts_with check below.
+    let canonical = candidate
+        .canonicalize()
+        .map_err(|_| "file_not_found".to_string())?;
+
+    // 6) Canonicalise claude_dir too so the comparison is apples-to-apples
+    //    (Windows \\?\ extended-length prefixes match either both or neither).
+    let canonical_claude = claude_dir
+        .canonicalize()
+        .map_err(|e| format!("resolve_claude_dir_failed: {e}"))?;
+
+    if !canonical.starts_with(&canonical_claude) {
+        return Err("path_escapes_claude_dir".to_string());
+    }
+
+    Ok(canonical)
+}
+
+// v0.2.5 — double-click a tracked file in the FileTree to open it with
+// the OS's default editor (Notepad/VSCode/... on Windows, TextEdit/...
+// on macOS, xdg-open on Linux). The frontend hands us a path relative to
+// ~/.claude/; we validate (5-stage defence in `validate_open_path`),
+// canonicalise, and hand the absolute path to the opener plugin's Rust
+// API. Going through Rust keeps path-traversal defence inside the trust
+// boundary and bypasses the capability ACL on `opener:open_path` that we
+// otherwise would have to widen.
+#[tauri::command]
+pub async fn open_in_editor(app: AppHandle, rel_path: String) -> Result<(), String> {
+    let claude_dir = resolve_claude_dir()?;
+    let canonical = validate_open_path(&rel_path, &claude_dir)?;
+    let canonical_str = canonical
+        .to_str()
+        .ok_or_else(|| "path_not_utf8".to_string())?;
+    app.opener()
+        .open_path(canonical_str, None::<&str>)
+        .map_err(|e| format!("opener_failed: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         create_default_stowignore_at, fail_message, is_not_initialized_stdout,
-        rewrite_origin_url, validate_remote_url, DEFAULT_STOWIGNORE,
+        rewrite_origin_url, validate_open_path, validate_remote_url, DEFAULT_STOWIGNORE,
     };
     use std::path::PathBuf;
 
@@ -604,5 +741,148 @@ mod tests {
         assert!(!dir.exists());
         let err = create_default_stowignore_at(&dir).unwrap_err();
         assert_eq!(err, "claude_dir_not_found");
+    }
+
+    // v0.2.5 — open_in_editor path-traversal defence. The FE hands us a path
+    // relative to ~/.claude/; validate_open_path is the pure helper that
+    // enforces the 5-stage check (no abs path / no UNC / no .. / must exist /
+    // must stay under claude_dir). These tests cover each stage's stable
+    // error string so the FE can keep pattern-matching them.
+    #[test]
+    fn open_in_editor_rejects_absolute_path_windows() {
+        let dir = make_tempdir("oie-abs-win");
+        assert_eq!(
+            validate_open_path("C:\\Windows\\system32\\cmd.exe", &dir).unwrap_err(),
+            "absolute_path_rejected"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_in_editor_rejects_absolute_path_unix() {
+        let dir = make_tempdir("oie-abs-unix");
+        assert_eq!(
+            validate_open_path("/etc/passwd", &dir).unwrap_err(),
+            "absolute_path_rejected"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_in_editor_rejects_unc() {
+        let dir = make_tempdir("oie-unc");
+        assert_eq!(
+            validate_open_path("\\\\server\\share\\file", &dir).unwrap_err(),
+            "unc_path_rejected"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_in_editor_rejects_dotdot_direct() {
+        let dir = make_tempdir("oie-dd-direct");
+        assert_eq!(
+            validate_open_path("../outside.md", &dir).unwrap_err(),
+            "path_traversal_rejected"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_in_editor_rejects_dotdot_nested() {
+        let dir = make_tempdir("oie-dd-nested");
+        assert_eq!(
+            validate_open_path("agents/../../outside.md", &dir).unwrap_err(),
+            "path_traversal_rejected"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_in_editor_rejects_nonexistent_file() {
+        let dir = make_tempdir("oie-missing");
+        assert_eq!(
+            validate_open_path("definitely_not_a_real_file_xyz.md", &dir).unwrap_err(),
+            "file_not_found"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_in_editor_accepts_existing_file_under_claude_dir() {
+        let dir = make_tempdir("oie-ok");
+        let file = dir.join("settings.json");
+        std::fs::write(&file, "{}").expect("seed file");
+        let result = validate_open_path("settings.json", &dir).expect("should accept");
+        // canonicalize() may add \\?\ on Windows — compare via canonicalize.
+        let expected = file.canonicalize().expect("canonicalize seed");
+        assert_eq!(result, expected);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_in_editor_rejects_empty_path() {
+        let dir = make_tempdir("oie-empty");
+        assert_eq!(
+            validate_open_path("", &dir).unwrap_err(),
+            "empty_path_rejected"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_in_editor_rejects_dot() {
+        let dir = make_tempdir("oie-dot");
+        assert_eq!(
+            validate_open_path(".", &dir).unwrap_err(),
+            "empty_path_rejected"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_in_editor_rejects_control_chars() {
+        let dir = make_tempdir("oie-ctrl");
+        assert_eq!(
+            validate_open_path("a\x00b.md", &dir).unwrap_err(),
+            "path_contains_control_chars"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_in_editor_rejects_windows_reserved_names() {
+        let dir = make_tempdir("oie-reserved");
+        // Plain name
+        assert_eq!(
+            validate_open_path("NUL", &dir).unwrap_err(),
+            "reserved_device_name"
+        );
+        // Lowercase (Windows is case-insensitive)
+        assert_eq!(
+            validate_open_path("nul", &dir).unwrap_err(),
+            "reserved_device_name"
+        );
+        // With extension
+        assert_eq!(
+            validate_open_path("CON.txt", &dir).unwrap_err(),
+            "reserved_device_name"
+        );
+        // Inside subdirectory
+        assert_eq!(
+            validate_open_path("agents/COM1", &dir).unwrap_err(),
+            "reserved_device_name"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_in_editor_rejects_curdir_component() {
+        let dir = make_tempdir("oie-curdir");
+        assert_eq!(
+            validate_open_path("agents/./foo.md", &dir).unwrap_err(),
+            "path_traversal_rejected"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

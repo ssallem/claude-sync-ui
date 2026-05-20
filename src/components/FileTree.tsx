@@ -20,6 +20,10 @@ interface FileTreeProps {
   // .stowignore inspector. App.tsx wires this to a modal that reads
   // the user's ~/.claude/.stowignore via a Tauri command.
   onShowExcluded?: () => void;
+  // v0.2.5 — double-click a file entry to open it in the OS default editor.
+  // App.tsx supplies a handler that invokes the open_in_editor Tauri command
+  // and toasts on failure; FileTree just dispatches and stays display-only.
+  onFileOpen?: (entry: ChangeEntry) => void;
 }
 
 interface Group {
@@ -34,6 +38,11 @@ function groupByDir(changes: ChangeEntry[], rootLabel: string): Group[] {
     const idx = normalized.indexOf("/");
     const dir = idx === -1 ? rootLabel : normalized.slice(0, idx);
     const name = idx === -1 ? normalized : normalized.slice(idx + 1);
+    // v0.2.5 — defence-in-depth: parse.rs already drops trailing-slash sentinel
+    // paths (libgit2 emits "daemon/" for untracked dirs when
+    // recurse_untracked_dirs is off), but if any layer regresses, we keep the
+    // UI clean by skipping rows that would render with an empty `name`.
+    if (name === "") continue;
     if (!map.has(dir)) map.set(dir, []);
     map.get(dir)!.push({ name, entry: c });
   }
@@ -48,6 +57,7 @@ export default function FileTree({
   excluded_stow,
   excluded_git,
   onShowExcluded,
+  onFileOpen,
 }: FileTreeProps) {
   const { t } = useTranslation();
   const rootLabel = t("file-tree.root-bucket");
@@ -73,7 +83,10 @@ export default function FileTree({
   return (
     <div className="flex flex-col h-full text-sm">
       <div className="flex-1 overflow-auto px-3 py-2">
-        {changes.length === 0 ? (
+        {groups.length === 0 ? (
+          // v0.2.5 — use groups.length, not changes.length: if every entry was
+          // a directory sentinel ("daemon/") that groupByDir skipped, we still
+          // want the empty-state UI rather than a blank <ul>.
           <div className="h-full flex items-center justify-center text-slate-400 italic">
             {t("file-tree.empty")}
           </div>
@@ -99,20 +112,34 @@ export default function FileTree({
                   </button>
                   {!isCollapsed && (
                     <ul className="mt-1 pl-6 space-y-1">
-                      {g.entries.map(({ name, entry }) => (
-                        <li
-                          key={entry.path}
-                          className="flex items-center justify-between gap-3 group"
-                        >
-                          <span
-                            className="font-mono text-slate-200 truncate"
-                            title={entry.path}
+                      {g.entries.map(({ name, entry }) => {
+                        // Direct-mount sentinel: trailing-slash entries are directories
+                        // (groupByDir already filters them above, but defence-in-depth).
+                        const isDirSentinel =
+                          entry.path.endsWith("/") || entry.path.endsWith("\\");
+                        const clickable = !isDirSentinel && !!onFileOpen;
+                        return (
+                          <li
+                            key={entry.path}
+                            onDoubleClick={
+                              clickable ? () => onFileOpen!(entry) : undefined
+                            }
+                            className={`flex items-center justify-between gap-3 group${
+                              clickable
+                                ? " cursor-pointer hover:bg-slate-800/50 rounded px-1 -mx-1"
+                                : ""
+                            }`}
                           >
-                            {name}
-                          </span>
-                          <StatusBadge kind={entry.kind} />
-                        </li>
-                      ))}
+                            <span
+                              className="font-mono text-slate-200 truncate"
+                              title={clickable ? t("file-tree.open-in-editor") : entry.path}
+                            >
+                              {name}
+                            </span>
+                            <StatusBadge kind={entry.kind} />
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </li>

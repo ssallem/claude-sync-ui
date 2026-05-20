@@ -28,9 +28,13 @@ export const ko: Dict = {
   // FileTree
   "file-tree.empty": "변경 사항 없음 — 깨끗합니다",
   "file-tree.root-bucket": "(루트)",
+  "file-tree.tracking": "{n}개 파일 추적 중 (제외: stow {stow}개, git {git}개)",
   "file-tree.tracking_one": "{n}개 파일 추적 중 (제외: stow {stow}개, git {git}개)",
   "file-tree.tracking_other": "{n}개 파일 추적 중 (제외: stow {stow}개, git {git}개)",
   "file-tree.show-excluded": "무엇이 제외됐어?",
+  // v0.2.5 — 파일 row를 더블클릭하면 OS 기본 에디터에서 열기.
+  "file-tree.open-in-editor": "더블클릭하여 에디터에서 열기",
+  "file-tree.open-failed": "파일 열기 실패: {message}",
 
   // StowignoreModal
   "stowignore-modal.title": "동기화에서 제외된 항목",

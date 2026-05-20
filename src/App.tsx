@@ -17,6 +17,7 @@ import { useToast } from "./components/Toast";
 import { api } from "./lib/api";
 import { formatAgo } from "./lib/format";
 import { useTranslation } from "./i18n";
+import type { ChangeEntry } from "./types";
 
 const errMsg = (e: unknown) => typeof e === "string" ? e : (e as Error)?.message ?? String(e);
 // Route to InitScreen for the sidecar's "Not initialized..." stdout (now normalized to Err
@@ -101,6 +102,21 @@ function App() {
     }
   }, [toast, t, refresh]);
 
+  // v0.2.5 — double-clicking a FileTree row asks the sidecar to open the
+  // file in the OS default editor. Stable Err strings come back from the
+  // Rust validator (commands.rs::validate_open_path); we surface them as
+  // toasts so the user knows why nothing opened. Wrapped in a synchronous
+  // callback because FileTree's `onFileOpen` prop is `(entry) => void`.
+  const handleFileOpen = useCallback(
+    (entry: ChangeEntry) => {
+      api.openInEditor(entry.path).catch((e) => {
+        const m = errMsg(e);
+        toast.error(t("file-tree.open-failed", { message: m }));
+      });
+    },
+    [toast, t],
+  );
+
   const handleInit = useCallback(async (remote: string) => {
     setInitLoading(true); setInitError(null);
     try {
@@ -152,6 +168,7 @@ function App() {
           excluded_stow={status?.excluded_stow ?? 0}
           excluded_git={status?.excluded_git ?? 0}
           onShowExcluded={() => setStowignoreOpen(true)}
+          onFileOpen={handleFileOpen}
         />
       </main>
       <ActionBar status={status} onPush={handlePush} onPull={handlePull}

@@ -88,4 +88,15 @@ export const api = {
   async githubLogout(): Promise<void> {
     await invoke("github_logout");
   },
+
+  // v0.2.5 — double-click to open a tracked file in the OS default editor.
+  // `relPath` must be relative to ~/.claude/ and must not contain ".." or
+  // absolute-path components — the Rust layer enforces this. Stable Err
+  // strings (see commands.rs::validate_open_path):
+  //   "absolute_path_rejected" / "unc_path_rejected"
+  //   "path_traversal_rejected" / "file_not_found"
+  //   "path_escapes_claude_dir" / "opener_failed: ..."
+  async openInEditor(relPath: string): Promise<void> {
+    await invoke("open_in_editor", { relPath });
+  },
 };

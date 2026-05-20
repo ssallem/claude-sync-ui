@@ -20,7 +20,8 @@ pub fn run() {
             commands::github_device_poll,
             commands::github_is_logged_in,
             commands::github_logout,
-            commands::github_create_repo
+            commands::github_create_repo,
+            commands::open_in_editor
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

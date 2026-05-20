@@ -31,11 +31,19 @@ export const en: Dict = {
   // FileTree
   "file-tree.empty": "No changes — clean",
   "file-tree.root-bucket": "(root)",
+  // Base key used when t() is called without an `n` param; plural fallback to
+  // _one/_other handles the normal case. Keeping this present so future
+  // TranslationKey type-narrowing doesn't break the `t("file-tree.tracking", ...)`
+  // call sites silently.
+  "file-tree.tracking": "Tracking {n} files (excluded: {stow} stow, {git} git)",
   "file-tree.tracking_one": "Tracking {n} file (excluded: {stow} stow, {git} git)",
   "file-tree.tracking_other": "Tracking {n} files (excluded: {stow} stow, {git} git)",
   // v0.2.4 — link in the FileTree footer that opens the .stowignore inspector
   // so users can verify which per-machine paths (projects/, etc.) are skipped.
   "file-tree.show-excluded": "What's excluded?",
+  // v0.2.5 — double-click a file row to open it with the OS default editor.
+  "file-tree.open-in-editor": "Double-click to open in editor",
+  "file-tree.open-failed": "Failed to open file: {message}",
 
   // StowignoreModal — inspector that displays the user's ~/.claude/.stowignore.
   "stowignore-modal.title": "Excluded from sync",

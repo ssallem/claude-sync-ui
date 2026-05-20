@@ -33,6 +33,19 @@ export const en: Dict = {
   "file-tree.root-bucket": "(root)",
   "file-tree.tracking_one": "Tracking {n} file (excluded: {stow} stow, {git} git)",
   "file-tree.tracking_other": "Tracking {n} files (excluded: {stow} stow, {git} git)",
+  // v0.2.4 — link in the FileTree footer that opens the .stowignore inspector
+  // so users can verify which per-machine paths (projects/, etc.) are skipped.
+  "file-tree.show-excluded": "What's excluded?",
+
+  // StowignoreModal — inspector that displays the user's ~/.claude/.stowignore.
+  "stowignore-modal.title": "Excluded from sync",
+  "stowignore-modal.description":
+    "Paths matching these patterns in ~/.claude/.stowignore are kept local and never pushed to the remote. Per-machine state (projects/, file-history/, daemon/) lives here.",
+  "stowignore-modal.loading": "Reading .stowignore...",
+  "stowignore-modal.empty":
+    "No .stowignore file. Every tracked path in ~/.claude/ will be pushed.",
+  "stowignore-modal.close": "Close",
+  "stowignore-modal.close-aria": "Dismiss",
 
   // ActionBar
   "action-bar.push": "Push {n}↑",

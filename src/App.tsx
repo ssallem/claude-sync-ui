@@ -10,6 +10,7 @@ import StatusBar from "./components/StatusBar";
 import ErrorBanner from "./components/ErrorBanner";
 import InitScreen from "./components/InitScreen";
 import SettingsModal from "./components/SettingsModal";
+import StowignoreModal from "./components/StowignoreModal";
 import { useStatus } from "./hooks/useStatus";
 import { useRemoteUrl } from "./hooks/useRemoteUrl";
 import { useToast } from "./components/Toast";
@@ -39,6 +40,7 @@ function App() {
   const [loading, setLoading] = useState<ActionKey | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [stowignoreOpen, setStowignoreOpen] = useState<boolean>(false);
   const [initLoading, setInitLoading] = useState<boolean>(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [remoteRefreshKey, setRemoteRefreshKey] = useState<number>(0);
@@ -149,6 +151,7 @@ function App() {
           tracked={status?.tracked ?? 0}
           excluded_stow={status?.excluded_stow ?? 0}
           excluded_git={status?.excluded_git ?? 0}
+          onShowExcluded={() => setStowignoreOpen(true)}
         />
       </main>
       <ActionBar status={status} onPush={handlePush} onPull={handlePull}
@@ -159,6 +162,10 @@ function App() {
         onClose={() => setSettingsOpen(false)}
         currentRemote={remoteUrl}
         onRemoteChanged={handleRemoteChanged}
+      />
+      <StowignoreModal
+        open={stowignoreOpen}
+        onClose={() => setStowignoreOpen(false)}
       />
     </div>
   );

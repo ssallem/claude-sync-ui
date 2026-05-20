@@ -45,6 +45,13 @@ export const api = {
     await invoke("create_default_stowignore");
   },
 
+  // v0.2.4 — read ~/.claude/.stowignore for the inspector modal. Returns
+  // "" when the file does not exist (treated as "no exclusions configured")
+  // rather than throwing — the UI shows an empty-state message instead.
+  async readStowignore(): Promise<string> {
+    return invoke("read_stowignore");
+  },
+
   // -----------------------------------------------------------------------
   // GitHub OAuth Device Flow + repo creation (B-2-1 / B-2-2).
   //

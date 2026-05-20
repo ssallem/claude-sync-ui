@@ -47,42 +47,60 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 
 ## [0.2.4] - 2026-05-20
 
-Hotfix release. After the v0.2.3 secret-scan recovery, the first user who
-made it past `init` landed on the main screen with the branch in its
-unborn state — `~/.claude/.git` initialized but no commits yet, all files
-untracked. The bottom `Push 0↑` button was disabled (because `ahead === 0`),
-so there was no way to trigger the initial sync from the UI. Force-quit and
-hand-run `claude-sync push` was the only workaround.
+Hotfix release covering three issues a first-time user surfaced after the
+v0.2.3 secret-scan recovery. They got past `init`, landed on the main
+screen, and asked three concrete questions:
 
-The same disable rule also broke the much more common case of "I edited a
-file but haven't committed yet" — `claude-sync push` stages, commits, and
-pushes in one step, so disabling on `ahead === 0` was wrong any time there
-were uncommitted local changes.
+1. The bottom `Push 0↑` button never lights up.
+2. Clicking the `▼` next to a directory does nothing.
+3. "PCs have different projects/ — that's excluded, right?"
+
+This release answers all three.
 
 ### Fixed
-- **ActionBar — push button enables when there are uncommitted local changes,
-  not only when `ahead > 0`.** The button is now active whenever a successful
-  push would land at least one commit on origin (= `ahead` + 1 if there is
-  anything to stage). Covers both the post-init unborn-branch state and the
+- **ActionBar — push button enables when there are uncommitted local
+  changes, not only when `ahead > 0`.** The button is now active whenever
+  a successful push would land at least one commit on origin (= `ahead`
+  + 1 if there is anything to stage). Covers both the post-init
+  unborn-branch state (no commits yet, just untracked files) and the
   ordinary working-tree-edits-without-a-commit state.
 - **Conflict entries no longer count toward push, and any unresolved
-  conflict hard-disables the button.** A `claude-sync status` change with
-  kind `!` is an unresolved conflict; the existing Resolve Conflicts button
-  handles those. Even if other staged changes exist alongside a conflict,
-  push stays disabled — pushing a half-merged tree would land a
-  `_conflicts`-key payload on origin and break peers on next pull.
+  conflict hard-disables the button.** A `claude-sync status` change
+  with kind `!` is an unresolved conflict; the existing Resolve Conflicts
+  button handles those. Even if other staged changes exist alongside a
+  conflict, push stays disabled — pushing a half-merged tree would land
+  a `_conflicts`-key payload on origin and break peers on next pull.
+- **FileTree directory groups now collapse/expand on click.** The `▼`
+  glyph looked like a button in v0.2.3 but was inert; clicking it
+  toggles the group between `▼` (expanded) and `▶` (collapsed) and the
+  button carries proper `aria-expanded` state. Default = expanded; the
+  state is per-session (not persisted), since which directories the user
+  cares about depends on what changed *this* session.
+
+### Added
+- **`.stowignore` inspector modal** so the user can self-verify exactly
+  which paths are skipped from sync. The FileTree footer now shows a
+  "What's excluded?" link (only when there are exclusions to show)
+  that opens a modal displaying the contents of `~/.claude/.stowignore`.
+  Backed by a new `read_stowignore` Tauri command. This directly answers
+  the "does projects/ get synced or not?" dogfood question — the rule
+  is now visible in the UI instead of having to trust an opaque
+  "excluded: stow 3314" counter.
 
 ### Notes
-- The label remains `Push N↑`. `N` is the count of commits that will be on
-  origin after the push completes (existing `ahead` + 1 staged commit if
-  any uncommitted change is present, conflicts excluded).
-- No backend changes — the sidecar's `push` command already handled all
-  three states (clean, pending changes, unborn) correctly; only the UI gate
-  was wrong.
-- New regression coverage in `ActionBar.test.tsx` pins eight push-button
-  enable/disable states (clean, ahead only, unborn-with-untracked, modified
-  only, conflict only, conflict-coexists-with-modified, conflict-with-ahead,
-  and combined ahead + pending).
+- The push label remains `Push N↑`. `N` is the count of commits that
+  will be on origin after the push completes (existing `ahead` + 1
+  staged commit if any uncommitted change is present, conflicts
+  excluded).
+- No sidecar/CLI changes — the sidecar's `push` command already handled
+  all three states (clean, pending changes, unborn) correctly; only the
+  UI gate was wrong.
+- New regression coverage:
+  - `ActionBar.test.tsx` pins nine push-button enable/disable states.
+  - `FileTree.test.tsx` adds four cases for the toggle behaviour and
+    the "What's excluded?" link visibility rules.
+  - `StowignoreModal.test.tsx` covers loading / body / empty / error /
+    Escape-to-close / button-to-close branches.
 
 ## [0.2.3] - 2026-05-19
 

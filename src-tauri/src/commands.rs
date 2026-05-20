@@ -344,6 +344,31 @@ pub async fn create_default_stowignore() -> Result<(), String> {
     create_default_stowignore_at(&claude_dir)
 }
 
+// Return the contents of ~/.claude/.stowignore so the UI can show the user
+// exactly which paths are excluded from sync. v0.2.4 dogfood report: a new
+// user had no way to verify their per-machine directories (projects/,
+// file-history/, ...) were actually being skipped — the only signal was the
+// "excluded: stow N" count, which is opaque.
+//
+// Contract:
+//   - Ok("")                     when ~/.claude/.stowignore does not exist
+//                                (treated as "no exclusions" rather than an error)
+//   - Ok(<file body>)            normal case
+//   - Err(<read error>)          unreadable file (permissions, etc.)
+//
+// We intentionally read the file every call rather than caching — the user
+// may hand-edit `.stowignore` between modal opens and the modal must reflect
+// the current state.
+#[tauri::command]
+pub async fn read_stowignore() -> Result<String, String> {
+    let claude_dir = resolve_claude_dir()?;
+    let path = claude_dir.join(".stowignore");
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))
+}
+
 // ---- GitHub OAuth Device Flow (Phase B v0.2) -------------------------------
 // These commands are stateless: the polling loop lives in the TS layer so we
 // don't have to manage a long-running tokio task tied to a window's lifetime.

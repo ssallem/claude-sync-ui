@@ -30,6 +30,17 @@ export const ko: Dict = {
   "file-tree.root-bucket": "(루트)",
   "file-tree.tracking_one": "{n}개 파일 추적 중 (제외: stow {stow}개, git {git}개)",
   "file-tree.tracking_other": "{n}개 파일 추적 중 (제외: stow {stow}개, git {git}개)",
+  "file-tree.show-excluded": "무엇이 제외됐어?",
+
+  // StowignoreModal
+  "stowignore-modal.title": "동기화에서 제외된 항목",
+  "stowignore-modal.description":
+    "~/.claude/.stowignore 의 규칙에 일치하는 경로는 이 PC에만 남고 원격으로 푸시되지 않습니다. 컴퓨터별 상태(projects/, file-history/, daemon/ 등)가 여기에 들어갑니다.",
+  "stowignore-modal.loading": ".stowignore 읽는 중...",
+  "stowignore-modal.empty":
+    ".stowignore 파일이 없습니다. ~/.claude/ 안의 모든 추적 경로가 푸시됩니다.",
+  "stowignore-modal.close": "닫기",
+  "stowignore-modal.close-aria": "창 닫기",
 
   // ActionBar
   "action-bar.push": "보내기 {n}↑",

@@ -20,7 +20,16 @@ The `claude-sync` CLI works fine, but its text output makes comparing the state 
 
 ## Install (Windows)
 
-1. Download `claude-sync-ui_x.x.x_x64-setup.exe` (or `.msi`) from the [Releases](https://github.com/ssallem/claude-sync-ui/releases) page.
+### Direct download (latest — v0.2.10)
+
+- **NSIS installer** (recommended): [`claude-sync-ui_0.2.10_x64-setup.exe`](https://github.com/ssallem/claude-sync-ui/releases/download/v0.2.10/claude-sync-ui_0.2.10_x64-setup.exe)
+- **MSI installer**: [`claude-sync-ui_0.2.10_x64_en-US.msi`](https://github.com/ssallem/claude-sync-ui/releases/download/v0.2.10/claude-sync-ui_0.2.10_x64_en-US.msi)
+
+All versions are listed on the [Releases](https://github.com/ssallem/claude-sync-ui/releases) page.
+
+### Steps
+
+1. Download `claude-sync-ui_x.x.x_x64-setup.exe` (or `.msi`) from the link above.
 2. Run the installer.
 3. Launch **claude-sync** from the Start menu.
 4. Enter your dotclaude repo URL on first run (e.g. `git@github.com:you/dotclaude.git`).

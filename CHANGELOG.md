@@ -45,6 +45,51 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 - Optional description field in `RepoCreator` so users can ship a one-liner
   to GitHub alongside the name (S4).
 
+## [0.2.12] - 2026-05-22
+
+**Release blocker hotfix.** Friend-PC dogfood with v0.2.11 surfaced a critical
+hole in the sidecar: `claude-sync status` was returning `.credentials.json`
+and other secret-bearing files in its `Changes:` output even though the local
+`.stowignore` (and the new v0.1.2 default) explicitly listed them. The cause
+was that the sidecar's `collect_changes()` consumed `git2`'s raw status
+results without filtering through `stowignore::is_ignored` — `is_ignored`
+itself was correct, it just wasn't being called on the changes path. The
+"excluded N by .stowignore" counter was computed by a separate function
+(`count_tracking`) that did filter correctly, which is how the bug evaded
+unit tests.
+
+### Sidecar (claude-sync v0.1.3)
+
+- **`status.rs::collect_changes`**: now takes `&Stowignore` and the claude
+  directory, joins each git status entry to an absolute path, and skips it
+  when `stow.is_ignored(...)` matches. The `stow` load was hoisted from
+  later in `run()` to keep a single load site. Without this fix, secret
+  files were exposed in the `Changes:` block of `claude-sync status`, and
+  the UI then displayed them in the file tree — one click on "보내기"
+  would have committed them.
+- **`pull.rs::commit_merge`**: the 3-way-merge auto-commit path was using
+  `index.add_all(["*"], ...)`, which respects `.gitignore` but not
+  `.stowignore`. After a successful auto-merge, a local `.credentials.json`
+  could end up in the merge commit. Push was still safe because `push.rs`
+  rebuilds the index through a stowignore-filtered staging step, but the
+  local commit was tainted. Replaced with a `walkdir`-driven walk that
+  skips `.git` and any path matching `stow.is_ignored(...)`, then
+  `index.add_path(...)` per surviving file.
+- **New integration test** `secret_files_excluded_from_collect_changes`
+  in `status.rs`: creates a `tempdir` with `CLAUDE.md` and
+  `.credentials.json` side-by-side, runs `collect_changes()` against the
+  default `.stowignore`, and asserts that `CLAUDE.md` is present and
+  `.credentials.json` is absent. This is the regression test that should
+  have caught the original bug.
+
+Sidecar binary SHA-256: `637b9a16f8581ef15bb0887cd37db2f6e951955d557bbed7813d3a8e4c5c1a41`
+
+### Tests
+
+- **1 new cargo test** — `secret_files_excluded_from_collect_changes`.
+  Total cargo test count is now 40 passing, and
+  `cargo clippy --all-targets -- -D warnings` remains clean.
+
 ## [0.2.11] - 2026-05-22
 
 Hotfix surfaced by a friend-PC dogfood pass. Two recoveries land in this

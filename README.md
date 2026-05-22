@@ -20,10 +20,10 @@ The `claude-sync` CLI works fine, but its text output makes comparing the state 
 
 ## Install (Windows)
 
-### Direct download (latest — v0.2.11)
+### Direct download (latest — v0.2.12)
 
-- **NSIS installer** (recommended): [`claude-sync-ui_0.2.11_x64-setup.exe`](https://github.com/ssallem/claude-sync-ui/releases/download/v0.2.11/claude-sync-ui_0.2.11_x64-setup.exe)
-- **MSI installer**: [`claude-sync-ui_0.2.11_x64_en-US.msi`](https://github.com/ssallem/claude-sync-ui/releases/download/v0.2.11/claude-sync-ui_0.2.11_x64_en-US.msi)
+- **NSIS installer** (recommended): [`claude-sync-ui_0.2.12_x64-setup.exe`](https://github.com/ssallem/claude-sync-ui/releases/download/v0.2.12/claude-sync-ui_0.2.12_x64-setup.exe)
+- **MSI installer**: [`claude-sync-ui_0.2.12_x64_en-US.msi`](https://github.com/ssallem/claude-sync-ui/releases/download/v0.2.12/claude-sync-ui_0.2.12_x64_en-US.msi)
 
 All versions are listed on the [Releases](https://github.com/ssallem/claude-sync-ui/releases) page.
 
@@ -55,10 +55,10 @@ replace it with a freshly built copy, build it from
 [ssallem/claude-sync](https://github.com/ssallem/claude-sync) via
 `cargo build --release` and copy the binary into that path.
 
-SHA-256 of the bundled `v0.1.2` sidecar:
+SHA-256 of the bundled `v0.1.3` sidecar (post-codesigning):
 
 ```
-66326236860456fbbfbb3deaba72e226e85f00c8e7a7268fa6e0e2018637c88d  claude-sync-x86_64-pc-windows-msvc.exe
+637b9a16f8581ef15bb0887cd37db2f6e951955d557bbed7813d3a8e4c5c1a41  claude-sync-x86_64-pc-windows-msvc.exe
 ```
 
 ## What it shows

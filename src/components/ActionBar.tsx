@@ -45,6 +45,13 @@ export default function ActionBar({ status, onPush, onPull, onResolve, onRefresh
   const { t } = useTranslation();
   const ahead = status?.ahead ?? 0;
   const behind = status?.behind ?? 0;
+  // v0.2.13 — friend-PC dogfood: after `init` against a populated remote the
+  // local branch is `(unborn)` with ahead=0/behind=0, so the old `behind === 0`
+  // gate left the Pull button disabled even though origin had commits the new
+  // PC needed. sidecar `pull.rs` already handles the unborn case
+  // (fetch + adopt FETCH_HEAD as the initial commit) — we just had to let the
+  // UI fire it.
+  const isUnborn = status?.branch === "(unborn)";
   const conflicts = useMemo(
     () => (status?.changes ?? []).filter((c) => c.kind === "!").length,
     [status],
@@ -82,9 +89,9 @@ export default function ActionBar({ status, onPush, onPull, onResolve, onRefresh
         onClick={onPush}
       />
       <ActionButton
-        label={t("action-bar.pull", { n: behind })}
+        label={isUnborn ? t("action-bar.pull-unborn") : t("action-bar.pull", { n: behind })}
         variant="secondary"
-        disabled={behind === 0 || loading !== null}
+        disabled={(!isUnborn && behind === 0) || loading !== null}
         loading={loading === "pull"}
         onClick={onPull}
       />

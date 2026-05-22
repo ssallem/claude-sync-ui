@@ -53,6 +53,10 @@ export const ko: Dict = {
   // ActionBar
   "action-bar.push": "보내기 {n}↑",
   "action-bar.pull": "받기 {n}↓",
+  // v0.2.13 — 로컬 브랜치가 `(unborn)`일 때 `action-bar.pull` 대신 표시.
+  // 아직 upstream 비교가 없어 "받기 0↓"은 의미가 없으므로, 원격을 가져와
+  // HEAD를 초기 커밋으로 채택한다는 의미를 명시.
+  "action-bar.pull-unborn": "원격에서 초기 동기화",
   "action-bar.resolve": "충돌 해결 ({n})",
   "action-bar.refresh": "새로고침",
 

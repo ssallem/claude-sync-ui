@@ -45,6 +45,32 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 - Optional description field in `RepoCreator` so users can ship a one-liner
   to GitHub alongside the name (S4).
 
+## [0.2.13] - 2026-05-22
+
+UX follow-up to the v0.2.12 release-blocker hotfix. After v0.2.12 stopped
+secret files from polluting the change tree, friend-PC dogfood still left
+the second machine stranded: branch `(unborn)`, `behind=0`, so the Pull
+button stayed disabled even though origin had a thousand+ commits the new
+PC needed to learn about. Recovery required a hand-typed PowerShell
+incantation, which is exactly the kind of "drop to the terminal" moment a
+GUI tool is supposed to remove.
+
+### Changed
+- **Pull button now activates for an unborn local branch**, not just when
+  `behind > 0`. The sidecar's `pull.rs` already handled the unborn case
+  (fetch + adopt FETCH_HEAD as the first commit) — the UI just wasn't
+  letting users trigger it. With this change, after `init` against a
+  populated remote, clicking the Pull button drives the same recovery
+  flow that previously required `claude-sync pull` from a shell.
+- **Pull button label switches to "원격에서 초기 동기화" /
+  "Initialize from remote"** when the local branch is `(unborn)`, so the
+  button doesn't read as a meaningless "Pull 0↓" in a state where there's
+  no upstream comparison yet.
+
+### Added
+- New i18n key `action-bar.pull-unborn` in both en and ko dictionaries,
+  kept in lock-step via the `Dict` type.
+
 ## [0.2.12] - 2026-05-22
 
 **Release blocker hotfix.** Friend-PC dogfood with v0.2.11 surfaced a critical

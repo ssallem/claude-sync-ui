@@ -63,6 +63,11 @@ export const en: Dict = {
   // ActionBar
   "action-bar.push": "Push {n}↑",
   "action-bar.pull": "Pull {n}↓",
+  // v0.2.13 — shown instead of `action-bar.pull` when the local branch is
+  // `(unborn)`. There's no upstream comparison yet so "Pull 0↓" would be
+  // meaningless; this label tells the user the button will fetch the remote
+  // and adopt its HEAD as the first commit.
+  "action-bar.pull-unborn": "Initialize from remote",
   "action-bar.resolve": "Resolve Conflicts ({n})",
   "action-bar.refresh": "Refresh",
 

@@ -185,6 +185,56 @@ describe("ActionBar — push enablement", () => {
     expect(push).toBeEnabled();
   });
 
+  // v0.2.13 — friend-PC dogfood: branch `(unborn)` after `init` against a
+  // populated remote. ahead=0, behind=0 (no upstream comparison yet), but
+  // there are commits on origin the new PC needs. Before the fix, the Pull
+  // button was disabled because `behind === 0`, leaving no in-app recovery.
+  it("enables Pull when branch is (unborn), even with behind=0", () => {
+    render(
+      <ActionBar
+        status={buildStatus({ branch: "(unborn)", ahead: 0, behind: 0 })}
+        onPush={noop}
+        onPull={noop}
+        onResolve={noop}
+        onRefresh={noop}
+        loading={null}
+      />,
+    );
+    const pull = screen.getByRole("button", { name: /Initialize from remote/ });
+    expect(pull).toBeEnabled();
+  });
+
+  it("invokes onPull when clicked in (unborn) state", () => {
+    const onPull = vi.fn();
+    render(
+      <ActionBar
+        status={buildStatus({ branch: "(unborn)", ahead: 0, behind: 0 })}
+        onPush={noop}
+        onPull={onPull}
+        onResolve={noop}
+        onRefresh={noop}
+        loading={null}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Initialize from remote/ }));
+    expect(onPull).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables Pull when (unborn) and loading=pull", () => {
+    render(
+      <ActionBar
+        status={buildStatus({ branch: "(unborn)", ahead: 0, behind: 0 })}
+        onPush={noop}
+        onPull={noop}
+        onResolve={noop}
+        onRefresh={noop}
+        loading="pull"
+      />,
+    );
+    const pull = screen.getByRole("button", { name: /Initialize from remote/ });
+    expect(pull).toBeDisabled();
+  });
+
   it("invokes onPush on click", async () => {
     const onPush = vi.fn();
     render(

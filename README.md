@@ -20,10 +20,10 @@ The `claude-sync` CLI works fine, but its text output makes comparing the state 
 
 ## Install (Windows)
 
-### Direct download (latest — v0.2.12)
+### Direct download (latest — v0.2.13)
 
-- **NSIS installer** (recommended): [`claude-sync-ui_0.2.12_x64-setup.exe`](https://github.com/ssallem/claude-sync-ui/releases/download/v0.2.12/claude-sync-ui_0.2.12_x64-setup.exe)
-- **MSI installer**: [`claude-sync-ui_0.2.12_x64_en-US.msi`](https://github.com/ssallem/claude-sync-ui/releases/download/v0.2.12/claude-sync-ui_0.2.12_x64_en-US.msi)
+- **NSIS installer** (recommended): [`claude-sync-ui_0.2.13_x64-setup.exe`](https://github.com/ssallem/claude-sync-ui/releases/download/v0.2.13/claude-sync-ui_0.2.13_x64-setup.exe)
+- **MSI installer**: [`claude-sync-ui_0.2.13_x64_en-US.msi`](https://github.com/ssallem/claude-sync-ui/releases/download/v0.2.13/claude-sync-ui_0.2.13_x64_en-US.msi)
 
 All versions are listed on the [Releases](https://github.com/ssallem/claude-sync-ui/releases) page.
 

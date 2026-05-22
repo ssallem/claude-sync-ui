@@ -45,6 +45,48 @@ OAuth / `v0.2.1` follow-ups (from the v0.2 critic review):
 - Optional description field in `RepoCreator` so users can ship a one-liner
   to GitHub alongside the name (S4).
 
+## [0.2.11] - 2026-05-22
+
+Hotfix surfaced by a friend-PC dogfood pass. Two recoveries land in this
+release: (1) `init` was not running an initial `fetch`, so a fresh clone with
+an unborn local `main` and `behind=0` could stall in a "looks-synced-but-isn't"
+state, and (2) the default `.stowignore` shipped by the `claude-sync` sidecar
+was missing leading-dot secret files (`.credentials.json` and friends) that
+the UI's `DEFAULT_STOWIGNORE` already excluded, so a fresh repo's first push
+could leak those secrets.
+
+### Sidecar (claude-sync v0.1.2)
+- **`init.rs` `try_initial_fetch`.** Best-effort `git fetch` immediately
+  after `init` + `remote add`, using the remote's default refspec (empty
+  slice `&[]` → libgit2 falls back to `+refs/heads/*:refs/remotes/origin/*`)
+  so `main`, `master`, or any other default branch all work. Silent on
+  failure so an empty `origin` (brand-new GitHub repo with no commits yet)
+  remains a valid starting state — the fetch only matters when the remote
+  already has history that the new PC needs to learn about. Emits a
+  `note:` line to stderr when the fetch is skipped so future debugging
+  has a breadcrumb.
+- **`.stowignore.default` expanded from 21 → 49 lines.** Added
+  `.credentials.json`, `history.jsonl`, `daemon/`, `daemon.lock`,
+  `daemon.status.json`, `sessions/`, `session-env/`, `session-data/`,
+  `image-cache/`, `paste-cache/`, `backups/`, `ide/`, `.serena/`,
+  `plugins/marketplaces/`, `.last-cleanup`, `mcp-needs-auth-cache.json`,
+  `debug/`, `jobs/`, `file-history/`, and `shell-snapshots/` — kept in
+  sync with the UI's `DEFAULT_STOWIGNORE` constant so the two layers no
+  longer disagree on what counts as a secret or local-only artefact.
+  (`todos/` and the redundant `daemon.log` line were intentionally dropped
+  during review — `todos/` is a generic directory name some users sync on
+  purpose, and `daemon.log` is already covered by the existing `*.log`.)
+- Sidecar binary SHA-256: `66326236860456fbbfbb3deaba72e226e85f00c8e7a7268fa6e0e2018637c88d`
+
+### Tests
+- **4 new cargo tests** — `default_excludes_dot_credentials`,
+  `default_excludes_history_and_daemon`,
+  `default_does_not_match_normal_sync_paths` (negative coverage for the
+  broad new patterns vs `CLAUDE.md` / `agents/` / `commands/` / `skills/`
+  / `rules/` / `hooks/`), and `try_initial_fetch_does_not_panic_on_no_remote`.
+  Total cargo test count is now 39 passing, and `cargo clippy
+  --all-targets -- -D warnings` remains clean.
+
 ## [0.2.10] - 2026-05-21
 
 Hotfix surfaced by the same second-PC dogfood that produced v0.2.9: the new
